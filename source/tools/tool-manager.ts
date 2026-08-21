@@ -81,6 +81,18 @@ export class ToolManager {
     private initializeAvailableTools(): void {
         // 从MCP服务器获取真实的工具列表
         try {
+            const toolModNames = [
+                './scene-tools', './node-tools', './component-tools', './prefab-tools',
+                './project-tools', './debug-tools', './preferences-tools', './server-tools',
+                './broadcast-tools', './scene-view-tools', './reference-image-tools',
+                './asset-advanced-tools', './validation-tools'
+            ];
+            for (const mod of toolModNames) {
+                try {
+                    delete require.cache[require.resolve(mod)];
+                } catch {}
+            }
+
             // 导入所有工具类
             const { SceneTools } = require('./scene-tools');
             const { NodeTools } = require('./node-tools');

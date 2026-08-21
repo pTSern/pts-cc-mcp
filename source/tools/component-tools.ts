@@ -167,6 +167,51 @@ export class ComponentTools implements ToolExecutor {
                     },
                     required: ['nodeUuid']
                 }
+            },
+
+            // 5. Universal Component Updater - Deep paths, custom @ccclass objects & arrays
+            {
+                name: 'update_component',
+                description: 'UNIVERSAL COMPONENT UPDATER: Deeply updates any component properties on a node with full support for deep nested paths ("config.sid", "config.data", "_hookers.0.key"), custom @ccclass object structures, arrays of objects, and asset arrays (onUpdates). Automatically triggers scene change events and inspector refresh.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        nodeUuid: {
+                            type: 'string',
+                            description: 'Target node UUID (REQUIRED).'
+                        },
+                        componentType: {
+                            type: 'string',
+                            description: 'Component class name (e.g. "Energy_Manager", "cc.Sprite", or script CID).'
+                        },
+                        properties: {
+                            type: 'object',
+                            description: 'Properties to update. Supports deep dot-notation keys (e.g. {"config.sid": "config_heart", "config._$lock": true}) or nested objects (e.g. {"config": {"sid": "config_heart", "data": "uuid"}}) and arrays.'
+                        },
+                        autoSave: {
+                            type: 'boolean',
+                            default: false,
+                            description: 'Whether to automatically save the scene after applying changes.'
+                        }
+                    },
+                    required: ['nodeUuid', 'componentType', 'properties']
+                }
+            },
+
+            // 6. Query Class Reflection Info
+            {
+                name: 'query_class_info',
+                description: 'QUERY CLASS REFLECTION: Inspects all @ccclass property definitions, data types, defaults, and @property decorators for any class name or constructor in the Cocos engine.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        className: {
+                            type: 'string',
+                            description: 'Target class name (e.g. "Energy_Manager", "Helper_IdSelector", "cc.Sprite").'
+                        }
+                    },
+                    required: ['className']
+                }
             }
         ];
     }
@@ -181,6 +226,10 @@ export class ComponentTools implements ToolExecutor {
                 return await this.setComponentProperties(args);
             case 'configure_click_event':
                 return await this.configureClickEvent(args);
+            case 'update_component':
+                return await this.updateComponent(args);
+            case 'query_class_info':
+                return await this.queryClassInfo(args);
             // 向后兼容性支持
             case 'add_component':
                 return await this.addComponents(args.nodeUuid, args.componentType);
@@ -2551,6 +2600,59 @@ export class ComponentTools implements ToolExecutor {
                 success: false,
                 error: `Configuration error: ${err.message}`
             };
+        }
+    }
+
+    private async updateComponent(args: any): Promise<ToolResponse> {
+        try {
+            const { nodeUuid, componentType, properties, autoSave } = args;
+            if (!nodeUuid) return { success: false, error: 'nodeUuid is required' };
+            if (!componentType) return { success: false, error: 'componentType is required' };
+            if (!properties || typeof properties !== 'object') {
+                return { success: false, error: 'properties object is required' };
+            }
+
+            const options = {
+                name: 'cocos-mcp-server',
+                method: 'updateComponent',
+                args: [nodeUuid, componentType, properties]
+            };
+
+            const result: any = await Editor.Message.request('scene', 'execute-scene-script', options);
+
+            if (result && result.success && autoSave) {
+                try {
+                    await Editor.Message.request('scene', 'save-scene');
+                } catch (saveErr: any) {
+                    console.warn('[ComponentTools] autoSave error:', saveErr);
+                }
+            }
+
+            return result || { success: false, error: 'No response from scene script' };
+        } catch (err: any) {
+            console.error('[ComponentTools] updateComponent error:', err);
+            return {
+                success: false,
+                error: `Failed to update component: ${err.message}`
+            };
+        }
+    }
+
+    private async queryClassInfo(args: any): Promise<ToolResponse> {
+        try {
+            const { className } = args;
+            if (!className) return { success: false, error: 'className is required' };
+
+            const options = {
+                name: 'cocos-mcp-server',
+                method: 'getClassInfo',
+                args: [className]
+            };
+
+            const result: any = await Editor.Message.request('scene', 'execute-scene-script', options);
+            return result || { success: false, error: 'No response from scene script' };
+        } catch (err: any) {
+            return { success: false, error: `Failed to query class info: ${err.message}` };
         }
     }
 }

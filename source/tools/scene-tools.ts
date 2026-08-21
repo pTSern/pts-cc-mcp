@@ -1,4 +1,8 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, SceneInfo } from '../types';
+import * as fs from 'fs';
+import * as path from 'path';
+
+declare const Editor: any;
 
 export class SceneTools implements ToolExecutor {
     getTools(): ToolDefinition[] {
@@ -155,6 +159,46 @@ export class SceneTools implements ToolExecutor {
                     },
                     required: ['action']
                 }
+            },
+
+            // 6. Inspect Scene - Deep inspection of scene structure and all component properties
+            {
+                name: 'inspect_scene',
+                description: 'INSPECT SCENE: Deeply inspects and resolves the full scene hierarchy, nodes, components, and all property values (including nested objects like Helper_IdSelector, configs, asset UUIDs, and arrays). Can inspect the active open scene or any specific scene file. Returns a human/AI-readable indented tree or full structured JSON.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        scenePath: {
+                            type: 'string',
+                            description: 'Optional. Scene asset path to inspect (e.g. "db://assets/scenes/game.scene" or "assets/scenes/game.scene"). If omitted, inspects currently active open scene in editor.'
+                        },
+                        format: {
+                            type: 'string',
+                            enum: ['tree', 'json', 'summary'],
+                            default: 'tree',
+                            description: 'Output format: "tree" = readable indented hierarchy with component properties summary (Recommended) | "json" = fully resolved recursive JSON object tree | "summary" = quick overview of node count and root structures'
+                        },
+                        filterNode: {
+                            type: 'string',
+                            description: 'Optional. Filter to only inspect a specific node (by name or UUID) and its children.'
+                        },
+                        maxDepth: {
+                            type: 'number',
+                            default: 20,
+                            description: 'Maximum hierarchy depth to traverse. Default: 20.'
+                        },
+                        includeComponents: {
+                            type: 'boolean',
+                            default: true,
+                            description: 'Whether to include component information. Default: true.'
+                        },
+                        includeProperties: {
+                            type: 'boolean',
+                            default: true,
+                            description: 'Whether to include component property values in detail. Default: true.'
+                        }
+                    }
+                }
             }
         ];
     }
@@ -171,6 +215,8 @@ export class SceneTools implements ToolExecutor {
                 return await this.handleStateManagement(args);
             case 'scene_query_system':
                 return await this.handleQuerySystem(args);
+            case 'inspect_scene':
+                return await this.inspectScene(args || {});
             default:
                 throw new Error(`Unknown tool: ${toolName}`);
         }
@@ -792,6 +838,296 @@ export class SceneTools implements ToolExecutor {
                 return await this.queryNodesByAssetUuid(args.assetUuid);
             default:
                 return { success: false, error: `Unknown query system action: ${action}` };
+        }
+    }
+
+    private async inspectScene(args: any): Promise<ToolResponse> {
+        try {
+            const format = args.format || 'tree';
+            const maxDepth = typeof args.maxDepth === 'number' ? args.maxDepth : 20;
+            const includeComponents = args.includeComponents !== false;
+            const includeProperties = args.includeProperties !== false;
+            const filterNode = args.filterNode ? String(args.filterNode).trim() : null;
+
+            let targetSceneFilePath: string | null = null;
+            let sceneAssetUrl: string = args.scenePath || '';
+
+            if (!sceneAssetUrl) {
+                try {
+                    const currentScene = await Editor.Message.request('scene', 'query-current-scene');
+                    if (currentScene && currentScene.url) {
+                        sceneAssetUrl = currentScene.url;
+                    }
+                } catch {}
+            }
+
+            if (sceneAssetUrl) {
+                if (sceneAssetUrl.startsWith('db://')) {
+                    try {
+                        const assetInfo = await Editor.Message.request('asset-db', 'query-asset-info', sceneAssetUrl);
+                        if (assetInfo && assetInfo.file) {
+                            targetSceneFilePath = assetInfo.file;
+                        }
+                    } catch {}
+                } else if (path.isAbsolute(sceneAssetUrl) && fs.existsSync(sceneAssetUrl)) {
+                    targetSceneFilePath = sceneAssetUrl;
+                } else {
+                    const candidate = path.join(Editor.Project.path, sceneAssetUrl);
+                    if (fs.existsSync(candidate)) {
+                        targetSceneFilePath = candidate;
+                    }
+                }
+            }
+
+            if (!targetSceneFilePath) {
+                const defaultCandidate = path.join(Editor.Project.path, 'assets', 'scenes', 'game.scene');
+                if (fs.existsSync(defaultCandidate)) {
+                    targetSceneFilePath = defaultCandidate;
+                }
+            }
+
+            if (targetSceneFilePath && fs.existsSync(targetSceneFilePath)) {
+                return this.inspectSceneFromFile(targetSceneFilePath, {
+                    format,
+                    maxDepth,
+                    includeComponents,
+                    includeProperties,
+                    filterNode
+                });
+            }
+
+            return await this.inspectSceneFromLiveEditor({
+                format,
+                maxDepth,
+                includeComponents,
+                includeProperties,
+                filterNode
+            });
+        } catch (error: any) {
+            console.error('[SceneTools] inspectScene error:', error);
+            return {
+                success: false,
+                error: `Failed to inspect scene: ${error.message}`
+            };
+        }
+    }
+
+    private inspectSceneFromFile(filePath: string, options: {
+        format: string;
+        maxDepth: number;
+        includeComponents: boolean;
+        includeProperties: boolean;
+        filterNode: string | null;
+    }): ToolResponse {
+        const rawContent = fs.readFileSync(filePath, 'utf8');
+        const data: any[] = JSON.parse(rawContent);
+
+        const lookup = new Map<number, any>();
+        data.forEach((item, index) => lookup.set(index, item));
+
+        const resolveValue = (val: any, visited = new Set<number>()): any => {
+            if (val === null || val === undefined) return val;
+            if (typeof val === 'object') {
+                if (val.__id__ !== undefined) {
+                    const refId = val.__id__;
+                    if (visited.has(refId)) return `[Circular ref __id__: ${refId}]`;
+                    visited.add(refId);
+                    const target = lookup.get(refId);
+                    if (!target) return val;
+                    return resolveValue(target, visited);
+                }
+                if (Array.isArray(val)) {
+                    return val.map(item => resolveValue(item, new Set(visited)));
+                }
+                const result: Record<string, any> = {};
+                for (const [k, v] of Object.entries(val)) {
+                    if (k === '_objFlags' || k === '__editorExtras__') continue;
+                    result[k] = resolveValue(v, new Set(visited));
+                }
+                return result;
+            }
+            return val;
+        };
+
+        const describeComponent = (comp: any) => {
+            const type = comp.__type__ || 'Unknown';
+            if (!options.includeProperties) {
+                return { type, enabled: comp._enabled !== false };
+            }
+            const props: Record<string, any> = {};
+            for (const [k, v] of Object.entries(comp)) {
+                if (['_name', '_objFlags', '__editorExtras__', 'node', '_enabled', '_materials', 'sharedMaterials', '_id', '_prefab', '_zid'].includes(k)) {
+                    continue;
+                }
+                props[k] = resolveValue(v);
+            }
+            return {
+                type,
+                enabled: comp._enabled !== false,
+                properties: props
+            };
+        };
+
+        const buildNodeTree = (nodeIndex: number, currentDepth: number): any => {
+            if (currentDepth > options.maxDepth) return null;
+            const node = lookup.get(nodeIndex);
+            if (!node || node.__type__ !== 'cc.Node') return null;
+
+            const name = node._name || 'Unnamed';
+            const uuid = node._id || node.uuid || '';
+            const active = node._active !== false;
+
+            const components: any[] = [];
+            if (options.includeComponents && Array.isArray(node._components)) {
+                for (const c of node._components) {
+                    if (c && c.__id__ !== undefined) {
+                        const compObj = lookup.get(c.__id__);
+                        if (compObj) {
+                            components.push(describeComponent(compObj));
+                        }
+                    }
+                }
+            }
+
+            const children: any[] = [];
+            if (Array.isArray(node._children)) {
+                for (const ch of node._children) {
+                    if (ch && ch.__id__ !== undefined) {
+                        const childTree = buildNodeTree(ch.__id__, currentDepth + 1);
+                        if (childTree) children.push(childTree);
+                    }
+                }
+            }
+
+            return {
+                name,
+                uuid,
+                active,
+                position: node._lpos || { x: 0, y: 0, z: 0 },
+                components,
+                children
+            };
+        };
+
+        const sceneObj = data.find(item => item.__type__ === 'cc.Scene');
+        const sceneName = sceneObj?._name || path.basename(filePath, '.scene');
+
+        const rootNodes: any[] = [];
+        if (sceneObj && Array.isArray(sceneObj._children)) {
+            for (const ch of sceneObj._children) {
+                if (ch && ch.__id__ !== undefined) {
+                    const tree = buildNodeTree(ch.__id__, 0);
+                    if (tree) rootNodes.push(tree);
+                }
+            }
+        }
+
+        let targetTrees = rootNodes;
+        if (options.filterNode) {
+            const filter = options.filterNode.toLowerCase();
+            const findFiltered = (nodes: any[]): any[] => {
+                const found: any[] = [];
+                for (const n of nodes) {
+                    if (n.name.toLowerCase().includes(filter) || n.uuid.toLowerCase() === filter) {
+                        found.push(n);
+                    } else if (n.children && n.children.length > 0) {
+                        found.push(...findFiltered(n.children));
+                    }
+                }
+                return found;
+            };
+            targetTrees = findFiltered(rootNodes);
+        }
+
+        if (options.format === 'json') {
+            return {
+                success: true,
+                data: {
+                    scene: sceneName,
+                    filePath,
+                    totalEntities: data.length,
+                    rootNodeCount: targetTrees.length,
+                    nodes: targetTrees
+                }
+            };
+        }
+
+        if (options.format === 'summary') {
+            let totalNodes = 0;
+            let totalComponents = 0;
+            const countStats = (nodes: any[]) => {
+                for (const n of nodes) {
+                    totalNodes++;
+                    totalComponents += (n.components?.length || 0);
+                    if (n.children) countStats(n.children);
+                }
+            };
+            countStats(rootNodes);
+
+            return {
+                success: true,
+                data: {
+                    scene: sceneName,
+                    filePath,
+                    totalNodes,
+                    totalComponents,
+                    rootNodes: rootNodes.map(r => ({ name: r.name, uuid: r.uuid, active: r.active, componentCount: r.components.length }))
+                }
+            };
+        }
+
+        const lines: string[] = [];
+        lines.push(`## Scene: ${sceneName} (${filePath})`);
+        lines.push(`Total root nodes: ${targetTrees.length}\n`);
+
+        const formatTreeNode = (node: any, depth: number) => {
+            const indent = '  '.repeat(depth);
+            const status = node.active ? '' : ' [DISABLED]';
+            lines.push(`${indent}* **${node.name}** (${node.uuid})${status}`);
+
+            if (options.includeComponents && node.components && node.components.length > 0) {
+                for (const c of node.components) {
+                    if (options.includeProperties && c.properties && Object.keys(c.properties).length > 0) {
+                        let propStr = JSON.stringify(c.properties);
+                        if (propStr.length > 140) propStr = propStr.substring(0, 140) + '...';
+                        lines.push(`${indent}    - \`${c.type}\`: ${propStr}`);
+                    } else {
+                        lines.push(`${indent}    - \`${c.type}\``);
+                    }
+                }
+            }
+
+            if (node.children && node.children.length > 0) {
+                for (const ch of node.children) {
+                    formatTreeNode(ch, depth + 1);
+                }
+            }
+        };
+
+        targetTrees.forEach(n => formatTreeNode(n, 0));
+
+        return {
+            success: true,
+            data: {
+                formattedText: lines.join('\n'),
+                scene: sceneName,
+                rootNodesCount: targetTrees.length
+            }
+        };
+    }
+
+    private async inspectSceneFromLiveEditor(options: any): Promise<ToolResponse> {
+        try {
+            const tree: any = await Editor.Message.request('scene', 'query-node-tree');
+            if (!tree) {
+                return { success: false, error: 'No live scene tree available' };
+            }
+            return {
+                success: true,
+                data: tree
+            };
+        } catch (err: any) {
+            return { success: false, error: `Live scene inspection failed: ${err.message}` };
         }
     }
 

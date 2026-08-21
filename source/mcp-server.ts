@@ -44,19 +44,35 @@ export class MCPServer {
     private initializeTools(): void {
         try {
             console.log('[MCPServer] Initializing tools...');
-            this.tools.scene = new SceneTools();
-            this.tools.node = new NodeTools();
-            this.tools.component = new ComponentTools();
-            this.tools.prefab = new PrefabTools();
-            this.tools.project = new ProjectTools();
-            this.tools.debug = new DebugTools();
-            this.tools.preferences = new PreferencesTools();
-            this.tools.server = new ServerTools();
-            this.tools.broadcast = new BroadcastTools();
-            this.tools.sceneView = new SceneViewTools();
-            this.tools.referenceImage = new ReferenceImageTools();
-            this.tools.assetAdvanced = new AssetAdvancedTools();
-            this.tools.validation = new ValidationTools();
+            const toolModules: Record<string, string> = {
+                scene: './tools/scene-tools',
+                node: './tools/node-tools',
+                component: './tools/component-tools',
+                prefab: './tools/prefab-tools',
+                project: './tools/project-tools',
+                debug: './tools/debug-tools',
+                preferences: './tools/preferences-tools',
+                server: './tools/server-tools',
+                broadcast: './tools/broadcast-tools',
+                sceneView: './tools/scene-view-tools',
+                referenceImage: './tools/reference-image-tools',
+                assetAdvanced: './tools/asset-advanced-tools',
+                validation: './tools/validation-tools'
+            };
+
+            for (const [key, modPath] of Object.entries(toolModules)) {
+                try {
+                    const resolved = require.resolve(modPath);
+                    delete require.cache[resolved];
+                    const mod = require(modPath);
+                    const exportKey = Object.keys(mod).find(k => k.toLowerCase().endsWith('tools')) || Object.keys(mod)[0];
+                    if (exportKey && typeof mod[exportKey] === 'function') {
+                        this.tools[key] = new mod[exportKey]();
+                    }
+                } catch (e) {
+                    console.error(`[MCPServer] Failed to load tool ${key}:`, e);
+                }
+            }
             console.log('[MCPServer] Tools initialized successfully');
         } catch (error) {
             console.error('[MCPServer] Error initializing tools:', error);

@@ -39,7 +39,7 @@
         }
     },
     "contributions": {
-                "menu": [
+        "menu": [
             {
                 "path": "i18n:menu.extension/Cocos MCP Server",
                 "label": "i18n:cocos-mcp-server.open_panel",
@@ -139,19 +139,13 @@
             }
         },
         "scene": {
-            "script": "./dist/scene.js",
+            "script": "./src/_cc.js",
             "methods": [
-                "createNewScene",
-                "addComponentToNode",
-                "removeComponentFromNode",
-                "getNodeInfo",
-                "getAllNodes",
-                "findNodeByName",
-                "setNodeProperty",
-                "setComponentProperty",
-                "getCurrentSceneInfo",
-                "getSceneHierarchy",
-                "createPrefabFromNode"
+                "log",
+                "getClassInfo",
+                "getComponentInfo",
+                "updateComponent",
+                "setNodeProperty"
             ]
         }
     }
