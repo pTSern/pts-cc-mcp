@@ -86,3 +86,5 @@ dist/examples/
 *.backup
 *.bak
 *.old
+
+dist
