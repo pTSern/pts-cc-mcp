@@ -120,6 +120,34 @@ export class PrefabTools implements ToolExecutor {
                     },
                     required: ['action', 'prefabPath']
                 }
+            },
+
+            // 5. Direct Prefab Component Updater
+            {
+                name: 'update_prefab_component',
+                description: 'DIRECT PREFAB COMPONENT UPDATER: Deeply updates any component on a prefab asset directly without needing to enter prefab edit mode. Supports deep dot-notation properties, nested object structures, and asset arrays (e.g. onChanged, sprites, JSON configs). Automatically refreshes asset database.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        prefabPath: {
+                            type: 'string',
+                            description: 'Prefab asset path (e.g. "db://assets/prefabs/Player.prefab" or "assets/shared/scripts/Components/Energy/prefabs/Energy_UI.prefab"). REQUIRED.'
+                        },
+                        componentType: {
+                            type: 'string',
+                            description: 'Component class name (e.g. "Energy_UI", "cc.Sprite", "Helper_IdSelector", CID). REQUIRED.'
+                        },
+                        properties: {
+                            type: 'object',
+                            description: 'Properties to update. Supports deep paths (e.g. {"config._sid": "config_heart"}), array replacements (e.g. {"onChanged": ["9377763b-ffb1-4982-ad19-d3201b92519b"]}), and direct values. REQUIRED.'
+                        },
+                        nodeName: {
+                            type: 'string',
+                            description: 'Optional target node name inside prefab (default: root node).'
+                        }
+                    },
+                    required: ['prefabPath', 'componentType', 'properties']
+                }
             }
         ];
     }
@@ -134,6 +162,8 @@ export class PrefabTools implements ToolExecutor {
                 return await this.handlePrefabInstance(args);
             case 'prefab_edit':
                 return await this.handlePrefabEdit(args);
+            case 'update_prefab_component':
+                return await this.handleUpdatePrefabComponent(args);
             default:
                 throw new Error(`Unknown tool: ${toolName}`);
         }
@@ -3831,4 +3861,29 @@ export class PrefabTools implements ToolExecutor {
         }
     }
 
+    private async handleUpdatePrefabComponent(args: any): Promise<ToolResponse> {
+        try {
+            const { prefabPath, componentType, properties, nodeName } = args;
+            if (!prefabPath) return { success: false, error: 'prefabPath is required' };
+            if (!componentType) return { success: false, error: 'componentType is required' };
+            if (!properties || typeof properties !== 'object') {
+                return { success: false, error: 'properties object is required' };
+            }
+
+            const options = {
+                name: 'cocos-mcp-server',
+                method: 'updatePrefabComponent',
+                args: [prefabPath, componentType, properties, nodeName]
+            };
+
+            const result: any = await Editor.Message.request('scene', 'execute-scene-script', options);
+            return result || { success: false, error: 'No response from scene script' };
+        } catch (err: any) {
+            console.error('[PrefabTools] handleUpdatePrefabComponent error:', err);
+            return {
+                success: false,
+                error: `Failed to update prefab component: ${err.message}`
+            };
+        }
+    }
 }

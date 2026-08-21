@@ -145,6 +145,7 @@
                 "getClassInfo",
                 "getComponentInfo",
                 "updateComponent",
+                "updatePrefabComponent",
                 "setNodeProperty"
             ]
         }
