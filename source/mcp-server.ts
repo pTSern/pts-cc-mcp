@@ -43,7 +43,8 @@ export class MCPServer {
                 sceneView: './tools/scene-view-tools',
                 referenceImage: './tools/reference-image-tools',
                 assetAdvanced: './tools/asset-advanced-tools',
-                validation: './tools/validation-tools'
+                validation: './tools/validation-tools',
+                nexus: './tools/nexus-tools'
             };
 
             for (const [key, modPath] of Object.entries(toolModules)) {
