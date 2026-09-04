@@ -110,7 +110,8 @@ async function resolveAssetValue(val, expectedType) {
                 if (!err && asset) {
                     resolve(asset);
                 } else {
-                    resolve({ __uuid__: uuid });
+                    const expectedName = expectedType ? (cc.js.getClassName(expectedType) || expectedType.name || expectedType) : undefined;
+                    resolve({ __uuid__: uuid, __expectedType__: expectedName });
                 }
             });
         } catch (e) {
@@ -152,16 +153,21 @@ async function setDeepProperty(target, pathStr, value) {
     const lastAttr = targetAttrsInfo.attributes ? targetAttrsInfo.attributes[lastPart] : null;
 
     if (lastAttr) {
-        const attrType = lastAttr.type || lastAttr.ctor;
-        const isAssetType = attrType && (
-            (typeof attrType === 'function' && cc.js.isChildClassOf(attrType, cc.Asset)) ||
+        const attrCtor = lastAttr.ctor || (typeof lastAttr.type === 'function' ? lastAttr.type : null);
+        const attrType = lastAttr.type;
+        const isAssetType = (
+            (attrCtor && cc.js.isChildClassOf(attrCtor, cc.Asset)) ||
+            attrCtor === cc.Asset ||
+            attrCtor === cc.JsonAsset ||
             attrType === cc.Asset ||
             attrType === cc.JsonAsset ||
             attrType === cc.SpriteFrame ||
             attrType === cc.Texture2D ||
             attrType === cc.Material ||
             attrType === cc.AudioClip ||
-            attrType === cc.Prefab
+            attrType === cc.Prefab ||
+            (typeof value === 'string' && (value.includes('-') || value.includes('@'))) ||
+            (value && (value.__uuid__ || value.uuid))
         );
 
         if (Array.isArray(value)) {
@@ -174,14 +180,14 @@ async function setDeepProperty(target, pathStr, value) {
             if (isArrayOfAssets || isAssetType) {
                 const resolvedArray = [];
                 for (const item of value) {
-                    const resolved = await resolveAssetValue(item, attrType);
+                    const resolved = await resolveAssetValue(item, attrCtor || attrType);
                     resolvedArray.push(resolved);
                 }
                 current[lastPart] = resolvedArray;
                 return true;
             }
         } else if (isAssetType && (typeof value === 'string' || (value && value.__uuid__))) {
-            current[lastPart] = await resolveAssetValue(value, attrType);
+            current[lastPart] = await resolveAssetValue(value, attrCtor || attrType);
             return true;
         }
     }
