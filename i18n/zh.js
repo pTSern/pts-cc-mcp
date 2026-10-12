@@ -1,10 +1,10 @@
 "use strict";
 
 module.exports = {
-    "extension_name": "Cocos MCP 服务器",
+    "extension_name": "pTS MCP Server",
     "description": "适用于 Cocos Creator 3.8 的 AI MCP 服务器",
     "panel_title": "MCP 服务器",
-    "open_panel": "打开 MCP 面板",
+    "open_panel": "打开 面板",
     "start_server": "启动服务器",
     "stop_server": "停止服务器",
     "server_status": "服务器状态",

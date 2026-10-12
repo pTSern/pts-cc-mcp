@@ -1,6 +1,7 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, SceneInfo } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
+import { EXTENSION_NAME } from '../constants';
 
 declare const Editor: any;
 
@@ -244,7 +245,7 @@ export class SceneTools implements ToolExecutor {
             // 备用方案：使用场景脚本
             try {
                 const options = {
-                    name: 'cocos-mcp-server',
+                    name: EXTENSION_NAME,
                     method: 'getCurrentSceneInfo',
                     args: []
                 };
@@ -507,7 +508,7 @@ export class SceneTools implements ToolExecutor {
             // 备用方案：使用场景脚本
             try {
                 const options = {
-                    name: 'cocos-mcp-server',
+                    name: EXTENSION_NAME,
                     method: 'getSceneHierarchy',
                     args: [includeComponents]
                 };

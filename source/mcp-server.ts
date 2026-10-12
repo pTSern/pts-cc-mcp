@@ -13,6 +13,7 @@ import {
     completeMcpToolCallContext,
     McpRequestHeaders
 } from './tool-call-context';
+import { EXTENSION_NAME } from './constants';
 
 declare const Editor: any;
 
@@ -150,7 +151,7 @@ export class MCPServer {
 
         // Initialize MCP SDK server
         this.mcpServer = new McpServer({
-            name: 'cocos-mcp-server',
+            name: EXTENSION_NAME,
             version: this.getVersion()
         }, {
             capabilities: {
@@ -352,7 +353,7 @@ export class MCPServer {
                     res.writeHead(405, { 'Allow': 'POST', 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ error: 'Method Not Allowed. Use POST for /mcp endpoint' }));
                 }
-            } else if (pathname === '/health' && req.method === 'GET') {
+            } else if ((pathname === '/health' || pathname === '/api/health') && req.method === 'GET') {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ status: 'ok', tools: this.toolsList.length }));
             } else if (pathname?.startsWith('/api/') && req.method === 'POST') {
@@ -470,7 +471,7 @@ export class MCPServer {
                             }
                         },
                         serverInfo: {
-                            name: 'cocos-mcp-server',
+                            name: EXTENSION_NAME,
                             version: this.getVersion()
                         }
                     };

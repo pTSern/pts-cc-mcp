@@ -1,5 +1,6 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, NodeInfo } from '../types';
 import { ComponentTools } from './component-tools';
+import { EXTENSION_NAME } from '../constants';
 
 declare const Editor: any;
 
@@ -1957,7 +1958,7 @@ export class NodeTools implements ToolExecutor {
             // Fallback: try using scene script execution
             try {
                 const sceneScriptOptions = {
-                    name: 'cocos-mcp-server',
+                    name: EXTENSION_NAME,
                     method: 'attachScript',
                     args: [nodeUuid, scriptPath]
                 };

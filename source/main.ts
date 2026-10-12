@@ -2,6 +2,7 @@ import { MCPServer } from './mcp-server';
 import { readSettings, saveSettings } from './settings';
 import { MCPServerSettings } from './types';
 import { ToolManager } from './tools/tool-manager';
+import { EXTENSION_NAME } from './constants';
 
 let mcpServer: MCPServer | null = null;
 let toolManager: ToolManager;
@@ -16,7 +17,10 @@ export const methods: { [key: string]: (...any: any) => any } = {
      * @zh 打开 MCP 服务器面板
      */
     openPanel() {
-        Editor.Panel.open('cocos-mcp-server');
+        Editor.Panel.open(EXTENSION_NAME);
+    },
+    openToolManager() {
+        Editor.Panel.open(EXTENSION_NAME);
     },
 
     /**

@@ -115,10 +115,12 @@ export function completeMcpToolCallContext(): Promise<void> {
             if (errors.length === 1) {
                 throw errors[0];
             }
-            if (typeof (globalThis as any).AggregateError !== 'undefined') {
-                throw new (globalThis as any).AggregateError(errors, 'Multiple MCP tool-call finalizers failed');
-            } else {
-                throw new Error(`Multiple MCP tool-call finalizers failed: ${errors.map(String).join('; ')}`);
+            if (errors.length > 1) {
+                if (typeof (globalThis as any).AggregateError !== 'undefined') {
+                    throw new (globalThis as any).AggregateError(errors, 'Multiple MCP tool-call finalizers failed');
+                } else {
+                    throw new Error(`Multiple MCP tool-call finalizers failed: ${errors.map(String).join('; ')}`);
+                }
             }
         } finally {
             context.lifecycleState = 'completed';

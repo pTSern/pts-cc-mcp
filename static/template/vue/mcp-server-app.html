@@ -1,141 +1,274 @@
 <div class="mcp-app">
-    <!-- 品牌头部区 -->
-    <div class="brand-header">
+    <!-- Brand Header -->
+    <header class="brand-header">
         <div class="brand-info">
-            <div class="brand-logo">MCP</div>
-            <div class="brand-text">
-                <span class="brand-name">{{ t('brand_name') }}</span>
-                <span class="brand-version">{{ t('brand_slogan') }}</span>
+            <div class="brand-badge">pTS</div>
+            <div class="brand-details">
+                <div class="brand-title-row">
+                    <span class="brand-name">{{ t('brand_name') }}</span>
+                    <span class="brand-tag">{{ t('brand_tag') }}</span>
+                </div>
+                <div class="brand-subtitle">{{ t('brand_slogan') }}</div>
+            </div>
+            <!-- Live Status Pill in Header -->
+            <div class="status-pill" :class="{ 'is-running': serverRunning, 'is-stopped': !serverRunning }">
+                <span class="status-dot"></span>
+                <span class="status-text">{{ serverRunning ? (t('running') + ' :' + settings.port) : t('stopped') }}</span>
             </div>
         </div>
-        <div class="brand-actions">
-            <select class="language-selector" :value="currentLanguage" @change="switchLanguage($event.target.value)">
-                <option value="zh">中文</option>
-                <option value="en">English</option>
-            </select>
-            <button class="pro-link" @click="openProLink" :title="t('pro_tip')">{{ t('pro_upgrade') }}</button>
-        </div>
-    </div>
 
-    <!-- 选项卡导航 -->
-    <div class="tab-navigation">
+        <div class="brand-actions">
+            <!-- Ping Health Action -->
+            <button
+                class="header-action-btn ping-btn"
+                :class="{ 'has-result': pingStatus }"
+                @click="testHealth"
+                :disabled="!serverRunning"
+                :title="t('test_connection')"
+            >
+                <span class="action-icon">⚡</span>
+                <span>{{ pingStatus || t('test_connection') }}</span>
+            </button>
+
+            <!-- Language Selector -->
+            <div class="lang-selector-wrapper">
+                <select class="language-selector" :value="currentLanguage" @change="switchLanguage($event.target.value)">
+                    <option value="en">English</option>
+                    <option value="zh">中文</option>
+                </select>
+            </div>
+        </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tab-navigation">
         <button class="tab-button" :class="{ active: activeTab === 'server' }" @click="switchTab('server')">
+            <span class="tab-icon">⚙️</span>
             <span>{{ t('tab_server') }}</span>
         </button>
         <button class="tab-button" :class="{ active: activeTab === 'tools' }" @click="switchTab('tools')">
+            <span class="tab-icon">🧰</span>
             <span>{{ t('tab_tools') }}</span>
+            <span class="tab-counter">{{ enabledTools }}/{{ totalTools }}</span>
         </button>
-    </div>
+    </nav>
 
-    <!-- 服务器选项卡 -->
+    <!-- Server Engine Tab -->
     <div class="tab-content" v-show="activeTab === 'server'">
-        <section class="server-status">
-            <h3>{{ t('server_status') }}</h3>
-            <div class="status-info">
-                <ui-prop>
-                    <ui-label slot="label">{{ t('status') }}</ui-label>
-                    <ui-label slot="content" class="status-value" :class="statusClass">{{ serverRunning ? t('running') : t('stopped') }}</ui-label>
-                </ui-prop>
-                <ui-prop v-if="serverRunning">
-                    <ui-label slot="label">{{ t('connections') }}</ui-label>
-                    <ui-label slot="content">{{ connectedClients }}</ui-label>
-                </ui-prop>
-            </div>
-        </section>
-
-        <section class="server-controls">
-            <ui-button @click="toggleServer" :disabled="isProcessing" class="primary">
-                {{ serverRunning ? t('stop_server') : t('start_server') }}
-            </ui-button>
-        </section>
-
-        <section class="server-settings">
-            <h3>{{ t('server_settings') }}</h3>
-            <ui-prop>
-                <ui-label slot="label">{{ t('port') }}</ui-label>
-                <ui-num-input slot="content" v-model="settings.port" :min="1024" :max="65535" :step="1" :disabled="serverRunning">
-                </ui-num-input>
-            </ui-prop>
-            <ui-prop>
-                <ui-label slot="label">{{ t('auto_start') }}</ui-label>
-                <ui-checkbox slot="content" v-model="settings.autoStart"></ui-checkbox>
-            </ui-prop>
-            <ui-prop>
-                <ui-label slot="label">{{ t('debug_log') }}</ui-label>
-                <ui-checkbox slot="content" v-model="settings.debugLog"></ui-checkbox>
-            </ui-prop>
-            <ui-prop>
-                <ui-label slot="label">{{ t('max_connections') }}</ui-label>
-                <ui-num-input slot="content" v-model="settings.maxConnections" :min="1" :max="100" :step="1">
-                </ui-num-input>
-            </ui-prop>
-        </section>
-
-        <section class="server-info" v-if="serverRunning">
-            <h3>{{ t('connection_info') }}</h3>
-            <div class="connection-details">
-                <ui-prop>
-                    <ui-label slot="label">{{ t('http_url') }}</ui-label>
-                    <ui-input slot="content" :value="httpUrl" readonly>
-                        <ui-button slot="suffix" @click="copyUrl">{{ t('copy') }}</ui-button>
-                    </ui-input>
-                </ui-prop>
-            </div>
-        </section>
-
-        <footer>
-            <ui-button @click="saveSettings" :disabled="!settingsChanged">{{ t('save_settings') }}</ui-button>
-        </footer>
-    </div>
-
-    <!-- 工具管理选项卡 -->
-    <div class="tab-content" v-show="activeTab === 'tools'">
-        <section class="tool-manager">
-            <div class="tool-manager-header">
-                <h3>{{ t('tool_management') }}</h3>
-            </div>
-
-            <div class="tools-section">
-                <div class="tools-section-header">
-                    <div class="tools-section-title">
-                        <h4>{{ t('available_tools') }}</h4>
-                        <div class="tools-stats">
-                            {{ totalTools }} {{ t('tools_count') }}
-                            ({{ enabledTools }} {{ t('enabled') }} / {{ disabledTools }} {{ t('disabled') }})
-                        </div>
+        <!-- Hero Status Card -->
+        <section class="pts-card hero-status-card">
+            <div class="hero-status-main">
+                <div class="hero-status-indicator" :class="{ 'online': serverRunning, 'offline': !serverRunning }">
+                    <div class="indicator-ring"></div>
+                    <div class="indicator-core"></div>
+                </div>
+                <div class="hero-status-meta">
+                    <div class="hero-state-title">
+                        {{ serverRunning ? t('running') : t('stopped') }}
                     </div>
-                    <div class="tools-section-controls">
-                        <ui-button @click="selectAllTools" class="small">{{ t('select_all') }}</ui-button>
-                        <ui-button @click="deselectAllTools" class="small">{{ t('deselect_all') }}</ui-button>
-                        <ui-button @click="saveChanges" class="primary">{{ t('save_changes') }}</ui-button>
+                    <div class="hero-state-desc">
+                        <span v-if="serverRunning">Listening on port <strong>{{ settings.port }}</strong> &bull; Ready for MCP client requests</span>
+                        <span v-else>Engine is offline. Start the server to enable AI agent tool calls.</span>
+                    </div>
+                </div>
+                <div class="hero-status-toggle">
+                    <button
+                        class="pts-btn toggle-server-btn"
+                        :class="serverRunning ? 'btn-danger' : 'btn-primary'"
+                        :disabled="isProcessing"
+                        @click="toggleServer"
+                    >
+                        <span class="btn-icon">{{ serverRunning ? '⏹' : '▶' }}</span>
+                        <span>{{ serverRunning ? t('stop_server') : t('start_server') }}</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class="hero-stats-grid">
+                <div class="stat-cell">
+                    <div class="stat-label">{{ t('port') }}</div>
+                    <div class="stat-value font-mono">{{ settings.port }}</div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-label">{{ t('connections') }}</div>
+                    <div class="stat-value font-mono">{{ connectedClients }}</div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-label">{{ t('available_tools') }}</div>
+                    <div class="stat-value font-mono">{{ enabledTools }} <span class="stat-sub">/ {{ totalTools }}</span></div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-label">Transport</div>
+                    <div class="stat-value font-mono">Streamable HTTP</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Connection Endpoint Card -->
+        <section class="pts-card" v-if="serverRunning">
+            <div class="card-header">
+                <h3>{{ t('connection_info') }}</h3>
+                <span class="endpoint-badge">JSON-RPC 2.0</span>
+            </div>
+            <div class="endpoint-group">
+                <div class="endpoint-field">
+                    <label class="endpoint-label">{{ t('http_url') }}</label>
+                    <div class="endpoint-input-box">
+                        <input type="text" class="endpoint-input font-mono" :value="httpUrl" readonly />
+                        <button class="pts-btn btn-secondary copy-btn" :class="{ 'copied': copySuccess }" @click="copyUrl">
+                            {{ copySuccess ? t('copied') : t('copy') }}
+                        </button>
+                    </div>
+                </div>
+                <div class="endpoint-hint">
+                    Use this URL in your MCP client (Antigravity, Cursor, Claude Desktop, Windsurf, or custom script).
+                </div>
+            </div>
+        </section>
+
+        <!-- Engine Settings Card -->
+        <section class="pts-card">
+            <div class="card-header">
+                <h3>{{ t('server_settings') }}</h3>
+            </div>
+            <div class="settings-form">
+                <div class="setting-row">
+                    <div class="setting-desc">
+                        <div class="setting-title">{{ t('port') }}</div>
+                        <div class="setting-subtitle">Default MCP listening port (1024 - 65535)</div>
+                    </div>
+                    <div class="setting-control">
+                        <ui-num-input v-model="settings.port" :min="1024" :max="65535" :step="1" :disabled="serverRunning">
+                        </ui-num-input>
                     </div>
                 </div>
 
-                <div class="tools-container">
-                    <div v-for="category in toolCategories" :key="category" class="tool-category">
-                        <div class="category-header">
-                            <h5>{{ getCategoryDisplayName(category) }}</h5>
-                            <div class="category-controls">
-                                <ui-button @click="toggleCategoryTools(category, true)" class="small">{{ t('select_all') }}</ui-button>
-                                <ui-button @click="toggleCategoryTools(category, false)" class="small">{{ t('deselect_all') }}</ui-button>
-                            </div>
+                <div class="setting-row">
+                    <div class="setting-desc">
+                        <div class="setting-title">{{ t('auto_start') }}</div>
+                        <div class="setting-subtitle">Automatically start the server when Cocos Creator loads</div>
+                    </div>
+                    <div class="setting-control">
+                        <ui-checkbox v-model="settings.autoStart"></ui-checkbox>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-desc">
+                        <div class="setting-title">{{ t('debug_log') }}</div>
+                        <div class="setting-subtitle">Log detailed incoming MCP RPC calls to editor console</div>
+                    </div>
+                    <div class="setting-control">
+                        <ui-checkbox v-model="settings.debugLog"></ui-checkbox>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-desc">
+                        <div class="setting-title">{{ t('max_connections') }}</div>
+                        <div class="setting-subtitle">Maximum simultaneous client connections allowed</div>
+                    </div>
+                    <div class="setting-control">
+                        <ui-num-input v-model="settings.maxConnections" :min="1" :max="100" :step="1">
+                        </ui-num-input>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-footer">
+                <button class="pts-btn btn-primary" @click="saveSettings" :disabled="!settingsChanged">
+                    {{ t('save_settings') }}
+                </button>
+            </div>
+        </section>
+    </div>
+
+    <!-- Tool Registry Tab -->
+    <div class="tab-content" v-show="activeTab === 'tools'">
+        <section class="pts-card tool-registry-card">
+            <div class="tool-registry-sticky-header">
+                <div class="tool-registry-header">
+                    <div class="registry-title-block">
+                        <h3>{{ t('tool_management') }}</h3>
+                        <div class="registry-stats">
+                            <span class="badge-count">{{ totalTools }} {{ t('tools_count') }}</span>
+                            <span class="badge-status-on">● {{ enabledTools }} {{ t('enabled') }}</span>
+                            <span class="badge-status-off">○ {{ disabledTools }} {{ t('disabled') }}</span>
                         </div>
-                        <div class="tool-items">
-                            <div v-for="tool in getToolsByCategory(category)" :key="tool.name" class="tool-item">
+                    </div>
+
+                    <div class="registry-actions">
+                        <button class="pts-btn btn-sm btn-secondary" @click="selectAllTools">{{ t('select_all') }}</button>
+                        <button class="pts-btn btn-sm btn-secondary" @click="deselectAllTools">{{ t('deselect_all') }}</button>
+                        <button class="pts-btn btn-sm btn-primary" @click="saveChanges">{{ t('save_changes') }}</button>
+                    </div>
+                </div>
+
+                <!-- Search Bar -->
+                <div class="search-bar-row">
+                    <div class="search-input-wrapper">
+                        <span class="search-icon">🔍</span>
+                        <input
+                            type="text"
+                            class="search-input"
+                            v-model="searchQuery"
+                            :placeholder="t('search_placeholder')"
+                        />
+                        <button v-if="searchQuery" class="clear-search-btn" @click="searchQuery = ''">&times;</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tools Container -->
+            <div class="tools-scroll-container">
+                <div v-if="filteredTotalCount === 0" class="empty-search-state">
+                    <div class="empty-icon">🔎</div>
+                    <div class="empty-text">{{ t('no_tools_found') }}</div>
+                </div>
+
+                <div
+                    v-for="category in toolCategories"
+                    :key="category"
+                    v-show="getToolsByCategory(category).length > 0"
+                    class="tool-category-card"
+                >
+                    <div class="category-header">
+                        <div class="category-title-group">
+                            <h4 class="category-title">{{ getCategoryDisplayName(category) }}</h4>
+                            <span class="category-pill">{{ getCategoryEnabledCount(category) }} / {{ getCategoryToolCount(category) }}</span>
+                        </div>
+                        <div class="category-quick-actions">
+                            <button class="btn-micro" @click="toggleCategoryTools(category, true)">{{ t('select_all') }}</button>
+                            <span class="sep">|</span>
+                            <button class="btn-micro" @click="toggleCategoryTools(category, false)">{{ t('deselect_all') }}</button>
+                        </div>
+                    </div>
+
+                    <div class="tool-list">
+                        <div
+                            v-for="tool in getToolsByCategory(category)"
+                            :key="tool.name"
+                            class="tool-item-row"
+                            :class="{ 'is-disabled': !tool.enabled }"
+                        >
+                            <div class="tool-checkbox-col">
                                 <ui-checkbox
                                     :value="tool.enabled"
                                     @change="(event) => updateToolStatus(category, tool.name, event.target.checked)"
                                 ></ui-checkbox>
-                                <div class="tool-info">
-                                    <div class="tool-name">{{ tool.name }}</div>
-                                    <div class="tool-description">{{ tool.description }}</div>
+                            </div>
+                            <div class="tool-content-col">
+                                <div class="tool-name-line">
+                                    <span class="tool-name-text font-mono">{{ tool.name }}</span>
+                                    <span v-if="tool.enabled" class="pill-active">{{ t('enabled') }}</span>
                                 </div>
+                                <div class="tool-desc-text">{{ tool.description }}</div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-
         </section>
     </div>
 </div>

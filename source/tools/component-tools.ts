@@ -1,4 +1,5 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, ComponentInfo } from '../types';
+import { EXTENSION_NAME } from '../constants';
 
 export class ComponentTools implements ToolExecutor {
     getTools(): ToolDefinition[] {
@@ -434,7 +435,7 @@ export class ComponentTools implements ToolExecutor {
         } catch (err: any) {
             // 备用方案：使用场景脚本
             const options = {
-                name: 'cocos-mcp-server',
+                name: EXTENSION_NAME,
                 method: 'addComponentToNode',
                 args: [nodeUuid, componentType]
             };
@@ -562,7 +563,7 @@ export class ComponentTools implements ToolExecutor {
         } catch (err: any) {
             // 备用方案：使用场景脚本
             const options = {
-                name: 'cocos-mcp-server',
+                name: EXTENSION_NAME,
                 method: 'getNodeInfo',
                 args: [nodeUuid]
             };
@@ -612,7 +613,7 @@ export class ComponentTools implements ToolExecutor {
         } catch (err: any) {
             // 备用方案：使用场景脚本
             const options = {
-                name: 'cocos-mcp-server',
+                name: EXTENSION_NAME,
                 method: 'getNodeInfo',
                 args: [nodeUuid]
             };
@@ -2613,7 +2614,7 @@ export class ComponentTools implements ToolExecutor {
             }
 
             const options = {
-                name: 'cocos-mcp-server',
+                name: EXTENSION_NAME,
                 method: 'updateComponent',
                 args: [nodeUuid, componentType, properties]
             };
@@ -2644,7 +2645,7 @@ export class ComponentTools implements ToolExecutor {
             if (!className) return { success: false, error: 'className is required' };
 
             const options = {
-                name: 'cocos-mcp-server',
+                name: EXTENSION_NAME,
                 method: 'getClassInfo',
                 args: [className]
             };
