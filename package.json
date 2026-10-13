@@ -140,16 +140,6 @@
                     "getEnabledTools"
                 ]
             }
-        },
-        "scene": {
-            "script": "./src/_cc.js",
-            "methods": [
-                "log",
-                "getClassInfo",
-                "getComponentInfo",
-                "updateComponent",
-                "setNodeProperty"
-            ]
         }
     }
 }

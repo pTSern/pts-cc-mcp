@@ -1,5 +1,5 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, ComponentInfo } from '../types';
-import { EXTENSION_NAME } from '../constants';
+import { EXTENSION_NAME, SCENE_SCRIPT_TARGET } from '../constants';
 
 export class ComponentTools implements ToolExecutor {
     getTools(): ToolDefinition[] {
@@ -435,7 +435,7 @@ export class ComponentTools implements ToolExecutor {
         } catch (err: any) {
             // 备用方案：使用场景脚本
             const options = {
-                name: EXTENSION_NAME,
+                name: SCENE_SCRIPT_TARGET,
                 method: 'addComponentToNode',
                 args: [nodeUuid, componentType]
             };
@@ -563,7 +563,7 @@ export class ComponentTools implements ToolExecutor {
         } catch (err: any) {
             // 备用方案：使用场景脚本
             const options = {
-                name: EXTENSION_NAME,
+                name: SCENE_SCRIPT_TARGET,
                 method: 'getNodeInfo',
                 args: [nodeUuid]
             };
@@ -613,7 +613,7 @@ export class ComponentTools implements ToolExecutor {
         } catch (err: any) {
             // 备用方案：使用场景脚本
             const options = {
-                name: EXTENSION_NAME,
+                name: SCENE_SCRIPT_TARGET,
                 method: 'getNodeInfo',
                 args: [nodeUuid]
             };
@@ -2614,7 +2614,7 @@ export class ComponentTools implements ToolExecutor {
             }
 
             const options = {
-                name: EXTENSION_NAME,
+                name: SCENE_SCRIPT_TARGET,
                 method: 'updateComponent',
                 args: [nodeUuid, componentType, properties]
             };
@@ -2645,7 +2645,7 @@ export class ComponentTools implements ToolExecutor {
             if (!className) return { success: false, error: 'className is required' };
 
             const options = {
-                name: EXTENSION_NAME,
+                name: SCENE_SCRIPT_TARGET,
                 method: 'getClassInfo',
                 args: [className]
             };

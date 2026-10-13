@@ -1,7 +1,7 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, SceneInfo } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
-import { EXTENSION_NAME } from '../constants';
+import { EXTENSION_NAME, SCENE_SCRIPT_TARGET } from '../constants';
 
 declare const Editor: any;
 
@@ -245,7 +245,7 @@ export class SceneTools implements ToolExecutor {
             // 备用方案：使用场景脚本
             try {
                 const options = {
-                    name: EXTENSION_NAME,
+                    name: SCENE_SCRIPT_TARGET,
                     method: 'getCurrentSceneInfo',
                     args: []
                 };
@@ -508,7 +508,7 @@ export class SceneTools implements ToolExecutor {
             // 备用方案：使用场景脚本
             try {
                 const options = {
-                    name: EXTENSION_NAME,
+                    name: SCENE_SCRIPT_TARGET,
                     method: 'getSceneHierarchy',
                     args: [includeComponents]
                 };
@@ -593,7 +593,7 @@ export class SceneTools implements ToolExecutor {
     private async executeSceneScript(name: string, method: string, args: any[]): Promise<ToolResponse> {
         try {
             const result: any = await Editor.Message.request('scene', 'execute-scene-script', {
-                name: name,
+                name: name || SCENE_SCRIPT_TARGET,
                 method: method,
                 args: args
             });

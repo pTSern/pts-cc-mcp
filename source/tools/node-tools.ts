@@ -1,6 +1,6 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, NodeInfo } from '../types';
 import { ComponentTools } from './component-tools';
-import { EXTENSION_NAME } from '../constants';
+import { EXTENSION_NAME, SCENE_SCRIPT_TARGET } from '../constants';
 
 declare const Editor: any;
 
@@ -1958,7 +1958,7 @@ export class NodeTools implements ToolExecutor {
             // Fallback: try using scene script execution
             try {
                 const sceneScriptOptions = {
-                    name: EXTENSION_NAME,
+                    name: SCENE_SCRIPT_TARGET,
                     method: 'attachScript',
                     args: [nodeUuid, scriptPath]
                 };

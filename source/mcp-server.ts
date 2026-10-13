@@ -57,7 +57,8 @@ export class MCPServer {
                 referenceImage: './tools/reference-image-tools',
                 assetAdvanced: './tools/asset-advanced-tools',
                 validation: './tools/validation-tools',
-                nexus: './tools/nexus-tools'
+                nexus: './tools/nexus-tools',
+                game: './tools/game-tools'
             };
 
             for (const [key, modPath] of Object.entries(toolModules)) {

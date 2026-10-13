@@ -106,6 +106,7 @@ module.exports = Editor.Panel.define({
                             cat_referenceImage: 'Reference Images',
                             cat_assetAdvanced: 'Asset Pipeline',
                             cat_validation: 'Validation & Schemas',
+                            cat_game: 'Gameplay & Runtime Driver',
                         },
                         zh: {
                             // Brand
@@ -165,6 +166,7 @@ module.exports = Editor.Panel.define({
                             cat_referenceImage: '参考图片',
                             cat_assetAdvanced: '高级资源管道',
                             cat_validation: '参数校验',
+                            cat_game: '游戏运行与输入驱动',
                         }
                     };
 

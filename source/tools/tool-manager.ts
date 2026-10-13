@@ -15,6 +15,26 @@ export class ToolManager {
         if (this.settings.configurations.length === 0) {
             console.log('[ToolManager] No configurations found, creating default configuration...');
             this.createConfiguration('默认配置', '自动创建的默认工具配置');
+        } else {
+            this.syncAvailableToolsToConfigurations();
+        }
+    }
+
+    private syncAvailableToolsToConfigurations(): void {
+        let changed = false;
+        for (const config of this.settings.configurations) {
+            const existingKeys = new Set(config.tools.map(t => `${t.category}_${t.name}`));
+            for (const tool of this.availableTools) {
+                const key = `${tool.category}_${tool.name}`;
+                if (!existingKeys.has(key)) {
+                    config.tools.push({ ...tool });
+                    changed = true;
+                }
+            }
+        }
+        if (changed) {
+            this.saveSettings();
+            console.log('[ToolManager] Synced newly available tools to existing configurations');
         }
     }
 
@@ -85,7 +105,7 @@ export class ToolManager {
                 './scene-tools', './node-tools', './component-tools', './prefab-tools',
                 './project-tools', './debug-tools', './preferences-tools', './server-tools',
                 './broadcast-tools', './scene-view-tools', './reference-image-tools',
-                './asset-advanced-tools', './validation-tools'
+                './asset-advanced-tools', './validation-tools', './game-tools'
             ];
             for (const mod of toolModNames) {
                 try {
@@ -107,6 +127,7 @@ export class ToolManager {
             const { ReferenceImageTools } = require('./reference-image-tools');
             const { AssetAdvancedTools } = require('./asset-advanced-tools');
             const { ValidationTools } = require('./validation-tools');
+            const { GameTools } = require('./game-tools');
 
             // 初始化工具实例
             const tools = {
@@ -122,7 +143,8 @@ export class ToolManager {
                 sceneView: new SceneViewTools(),
                 referenceImage: new ReferenceImageTools(),
                 assetAdvanced: new AssetAdvancedTools(),
-                validation: new ValidationTools()
+                validation: new ValidationTools(),
+                game: new GameTools()
             };
 
             // 从每个工具类获取工具列表
