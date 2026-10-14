@@ -6,22 +6,27 @@ Một plugin máy chủ MCP (Model Context Protocol) toàn diện dành cho Coco
 
 **🚀 Hiện tích hợp kiến trúc công cụ hợp nhất, thực thi hàng loạt nguyên tử (atomic batch execution) và hỗ trợ Animation Graph gốc, mang lại khả năng điều khiển 99% trình biên tập!**
 
-## 🙏 Lời cảm ơn & Nguồn gốc (Acknowledgments & Credits)
+## 🙏 Lời cảm ơn & Ghi nhận đóng góp
 
-Dự án này bắt nguồn từ bản fork mã nguồn mở [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) do tác giả **LiDaxian** khởi xướng. Chúng tôi xin bày tỏ lòng biết ơn và sự trân trọng sâu sắc tới **LiDaxian** cùng các cộng tác viên cộng đồng đã xây dựng nền tảng kiến trúc ban đầu, mở ra con đường tích hợp AI vào Cocos Creator.
+Dự án này bắt nguồn từ bản fork mã nguồn mở của [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) do tác giả **LiDaxian** sáng lập. Chúng tôi xin gửi lời cảm ơn và tri ân chân thành nhất tới **LiDaxian** cùng toàn thể cộng đồng đóng góp vì đã đặt nền móng kiến trúc và mở ra con đường phát triển Cocos Creator định hướng bởi AI.
 
-`pts-cc-mcp` tiếp tục sứ mệnh này như một dự án mã nguồn mở vì cộng đồng, hiện đã hỗ trợ đầy đủ:
-- **100% mã nguồn chuẩn tiếng Anh** cùng hệ thống bản địa hóa đa ngôn ngữ i18n hoàn chỉnh
-- **Bộ máy thực thi hàng loạt nguyên tử trong tiến trình** (`batch_execute` / `editor_batch_execute`)
-- **Chỉnh sửa State Machine đồ thị hoạt ảnh gốc** (`animgraph_manage`)
-- **Ngăn xếp phiên làm việc Prefab an toàn** tự động phục hồi cảnh tránh treo ứng dụng
-- **Bộ giải quyết đệ quy tài nguyên & tài nguyên con thông minh** (`@spriteFrame`, `@texture`, đường dẫn, UUID)
-- **Thiết lập tự động bộ khung xương Spine & FastSpine** chỉ với một lệnh gọi
-- **Giám sát trạng thái trình biên dịch TypeScript** (`compile_status`) loại bỏ xung đột đồng thời khi sửa script
+`pts-cc-mcp` tiếp tục xây dựng và phát triển trên nền tảng này như một phần mở rộng hoàn toàn nguồn mở, hướng đến cộng đồng với:
+- **Mã nguồn 100% chuẩn tiếng Anh** cùng hỗ trợ bản địa hóa đa ngôn ngữ i18n
+- **Engine thực thi hàng loạt nguyên tử ngay trong tiến trình** (`batch_execute` / `editor_batch_execute`)
+- **Đồ thị hoạt ảnh (Animation Graph) gốc** (`.animgraph`) kiểm tra & chỉnh sửa máy trạng thái
+- **Ngăn xếp phiên Prefab an toàn** với khả năng tự phục hồi, loại bỏ lỗi sập khi thoát cảnh
+- **Bộ giải quyết tài nguyên đệ quy thông minh** (`@spriteFrame`, `@texture`, đường dẫn thô, UUID)
+- **Spine & FastSpine** thiết lập khung xương nhân vật tự động
+- **Bộ theo dõi trình biên dịch TypeScript** (`compile_status`), loại bỏ xung đột tranh chấp khi biên dịch script
 
 ## Nhật ký cập nhật phiên bản mã nguồn mở
 
-## 🚀 Cập nhật lớn v1.5.4
+### 🚀 Cập nhật lớn v1.6.0 (Giai đoạn 1: Dual Streamable HTTP & SSE Transport)
+
+- **Engine truyền tải kép: Hỗ trợ Streamable HTTP & Server-Sent Events (SSE) gốc**: Hỗ trợ đầy đủ và trực tiếp giao thức Streamable HTTP (`/mcp`) cùng Server-Sent Events (`/sse` & `/messages`) từ `@modelcontextprotocol/sdk`, song song với endpoint JSON-RPC trực tiếp dự phòng không trạng thái (stateless fallback). Cung cấp khả năng quản lý vòng đời phiên độc lập theo từng client, tự động dọn dẹp phiên nhàn rỗi (idle) và hỗ trợ đầy đủ CORS cho các IDE AI hiện đại (Claude CLI, Cursor, Windsurf, VS Code).
+- **Tách biệt lõi script cảnh và xác lập quan hệ phụ thuộc đồng cấp (peer dependency) với `pts-core`**: Kiểm chứng và tài liệu hóa rõ ràng quan hệ phụ thuộc đồng cấp vào `pts-core` để thực thi script cảnh (`src/_cc.js`), đảm bảo sự tách biệt rành mạch giữa lớp chuyển dịch giao thức MCP và tầng thao tác cảnh của Cocos Creator.
+
+### 🚀 Cập nhật lớn v1.5.4
 
 - **Thực thi hàng loạt nguyên tử trong tiến trình (`batch_execute` / `editor_batch_execute`)**: Thực thi nhiều thao tác công cụ trong một giao dịch IPC tuần tự ngay trong tiến trình. Giảm đáng kể số lần khứ hồi (round-trip) HTTP và mức tiêu thụ Token, hỗ trợ `stopOnError` (dừng khi gặp lỗi) cùng tính năng tự động lưu cảnh/Prefab.
 - **Engine Animation Graph (`animgraph_manage`)**: Kiểm tra và chỉnh sửa tệp `.animgraph` gốc. Kiểm tra máy trạng thái (state machine), trạng thái (state), chuyển tiếp (transition) và tham số; thêm, cập nhật hoặc xóa `StateMachineComponent`; cùng khả năng di chuyển hàng loạt loại lớp thành phần với đồng bộ hóa cơ sở dữ liệu tài nguyên tự động.
@@ -85,13 +90,19 @@ Dự án này bắt nguồn từ bản fork mã nguồn mở [`cocos-mcp-server`
 
 ## Bắt đầu nhanh
 
-**Cấu hình Claude CLI:**
+`pts-cc-mcp` hỗ trợ cả hai phương thức truyền tải: **Streamable HTTP** (`/mcp`) và **Server-Sent Events (SSE)** (`/sse`).
+
+### 1. Cấu hình Claude CLI
 
 ```bash
+# Streamable HTTP (Mặc định khuyên dùng)
 claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
+
+# Hoặc thông qua Server-Sent Events (SSE)
+claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
 ```
 
-**Cấu hình Claude Desktop:**
+### 2. Cấu hình Claude Desktop
 
 ```json
 {
@@ -104,7 +115,22 @@ claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
 }
 ```
 
-**Cấu hình MCP cho Cursor hoặc VS Code:**
+*Hoặc cấu hình với phương thức truyền tải SSE:*
+
+```json
+{
+  "mcpServers": {
+    "cocos-creator": {
+      "type": "sse",
+      "url": "http://127.0.0.1:3000/sse"
+    }
+  }
+}
+```
+
+### 3. Cấu hình Cursor & Windsurf
+
+Trong phần Cài đặt MCP của Cursor hoặc Windsurf (`.cursor/mcp.json`):
 
 ```json
 {
@@ -116,26 +142,41 @@ claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
 }
 ```
 
+*(Bạn cũng có thể điền `"url": "http://127.0.0.1:3000/sse"` nếu mong muốn).*
+
 ---
 
-## ⚠️ Đọc trước khi cài đặt (Quan trọng)
+## ⚠️ Điều kiện tiên quyết & Phụ thuộc đồng cấp bắt buộc
 
-> **Trước khi cài đặt lần đầu hoặc nâng cấp, vui lòng xóa hai tệp `mcp-server.json` và `tool-manager.json` trong thư mục `settings/` của dự án, nếu không bộ nhớ cache danh sách công cụ có thể gây ra lỗi hiển thị!**
+> **QUAN TRỌNG: `pts-cc-mcp` yêu cầu cài đặt extension `pts-core` trong dự án của bạn.**
 >
-> Đường dẫn tệp: `<Project>/settings/mcp-server.json` và `<Project>/settings/tool-manager.json`
-> Sau khi xóa hai tệp này, mở lại bảng điều khiển extension sẽ đồng bộ lại toàn bộ công cụ một cách sạch sẽ.
+> **Vì sao `pts-core` là bắt buộc?**  
+> Cocos Creator 3.8+ sử dụng kiến trúc đa tiến trình, trong đó **Tiến trình chính của Trình biên tập** (nơi `pts-cc-mcp` chạy) hoàn toàn tách biệt khỏi **Tiến trình thực thi Cảnh** (nơi cảnh game, các thành phần component và runtime engine `@ccclass` trực tiếp hoạt động).  
+>
+> `pts-cc-mcp` thực thi các lệnh cảnh bằng cách gọi yêu cầu IPC: `Editor.Message.request('scene', 'execute-scene-script', { name: 'pts-core', method: '...' })`. Script cảnh này (`src/_cc.js`) được lưu trữ trực tiếp bên trong `pts-core`.  
+>
+> Nếu không có `pts-core`, các công cụ cần tương tác trực tiếp với cảnh đang hoạt động (như `component_*`, `node_node_transform`, `scene_inspect_scene`, `game_*`, và `component_query_class_info`) sẽ không thể thao tác với các node trong cảnh.
+
+> **Lưu ý trước khi cài đặt lần đầu hoặc nâng cấp:**  
+> Vui lòng xóa hai tệp `mcp-server.json` và `tool-manager.json` trong thư mục `settings/` của dự án, nếu không bộ nhớ cache danh sách công cụ có thể gây ra lỗi hiển thị!  
+> Đường dẫn tệp: `<Project>/settings/mcp-server.json` và `<Project>/settings/tool-manager.json`.  
+> Sau khi xóa hai tệp này, mở lại bảng điều khiển extension sẽ tự động đồng bộ lại toàn bộ công cụ một cách sạch sẽ.
 
 ## Hướng dẫn cài đặt
 
-### 1. Sao chép tệp plugin
+### 1. Đặt các tệp extension
 
-Sao chép thư mục `pts-cc-mcp` vào thư mục `extensions` trong dự án Cocos Creator của bạn:
+Đảm bảo CẢ HAI extension `pts-core` và `pts-cc-mcp` đều được đặt trong thư mục `extensions/` của dự án Cocos Creator:
 
 ```
 YourProject/
 ├── assets/
 ├── extensions/
-│   └── pts-cc-mcp/                <- Đặt plugin tại đây
+│   ├── pts-core/                  <- BẮT BUỘC: Lõi engine & runtime script cảnh (_cc.js)
+│   │   ├── src/_cc.js
+│   │   ├── package.json
+│   │   └── ...
+│   └── pts-cc-mcp/                <- Máy chủ MCP & nhà cung cấp công cụ
 │       ├── source/
 │       ├── dist/
 │       ├── package.json
@@ -144,24 +185,26 @@ YourProject/
 └── ...
 ```
 
-### 2. Cài đặt các thư viện phụ thuộc (Dependencies)
+### 2. Cài đặt dependency & build extension
 
 ```bash
-cd extensions/pts-cc-mcp
+# 1. Thiết lập pts-core (nếu build từ mã nguồn)
+cd extensions/pts-core
 npm install
-```
+npm run build
 
-### 3. Build plugin
-
-```bash
+# 2. Thiết lập pts-cc-mcp
+cd ../pts-cc-mcp
+npm install
 npm run build
 ```
 
-### 4. Kích hoạt plugin
+### 3. Kích hoạt plugin trong Cocos Creator
 
-1. Khởi động lại Cocos Creator hoặc tải lại Extension Manager
-2. Plugin sẽ xuất hiện trong menu Extensions
-3. Nhấp vào `Extensions > pTS MCP Server` để mở bảng điều khiển
+1. Khởi động lại Cocos Creator hoặc tải lại Extension Manager (**Extensions > Extension Manager**).
+2. Kiểm tra và đảm bảo cả **pts-core** và **pts-cc-mcp** đều đã được kích hoạt.
+3. Nhấp vào `Extensions > pTS MCP Server` để mở bảng điều khiển.
+4. Máy chủ chạy mặc định tại cổng `3000` (có thể tùy chỉnh cấu hình trong bảng điều khiển).
 
 ---
 

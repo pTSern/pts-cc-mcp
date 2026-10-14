@@ -2,8 +2,10 @@ import * as http from 'http';
 import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { MCPServerSettings, ServerStatus, ToolDefinition } from './types';
 import { fixCommonJsonIssues } from './utils/json-utils';
@@ -17,6 +19,18 @@ import { EXTENSION_NAME } from './constants';
 
 declare const Editor: any;
 
+interface StreamableSession {
+    transport: StreamableHTTPServerTransport;
+    server: McpServer;
+    lastActive: number;
+}
+
+interface SseSession {
+    transport: SSEServerTransport;
+    server: McpServer;
+    lastActive: number;
+}
+
 export class MCPServer {
     private static instance: MCPServer | null = null;
     private settings: MCPServerSettings;
@@ -25,6 +39,9 @@ export class MCPServer {
     private tools: Record<string, any> = {};
     private toolsList: ToolDefinition[] = [];
     private enabledTools: any[] = []; // Store list of enabled tools
+    private streamableSessions: Map<string, StreamableSession> = new Map();
+    private sseSessions: Map<string, SseSession> = new Map();
+    private sessionCleanupTimer: NodeJS.Timeout | null = null;
 
     constructor(settings: MCPServerSettings) {
         MCPServer.instance = this;
@@ -103,9 +120,10 @@ export class MCPServer {
 
             await new Promise<void>((resolve, reject) => {
                 this.httpServer!.listen(this.settings.port, '127.0.0.1', () => {
-                    console.log(`[MCPServer] ✅ HTTP server started successfully on http://127.0.0.1:${this.settings.port}`);
-                    console.log(`[MCPServer] Health check: http://127.0.0.1:${this.settings.port}/health`);
-                    console.log(`[MCPServer] MCP endpoint: http://127.0.0.1:${this.settings.port}/mcp`);
+                    console.log(`[MCPServer] ✅ HTTP & Streamable server started successfully on http://127.0.0.1:${this.settings.port}`);
+                    console.log(`[MCPServer] 📡 Streamable HTTP endpoint: http://127.0.0.1:${this.settings.port}/mcp`);
+                    console.log(`[MCPServer] 🌊 SSE endpoint: http://127.0.0.1:${this.settings.port}/sse`);
+                    console.log(`[MCPServer] 🩺 Health check: http://127.0.0.1:${this.settings.port}/health`);
                     resolve();
                 });
                 this.httpServer!.on('error', (err: any) => {
@@ -117,7 +135,11 @@ export class MCPServer {
                 });
             });
 
-            console.log('[MCPServer] 🚀 MCP Server is ready for connections');
+            this.sessionCleanupTimer = setInterval(() => {
+                this.cleanupStaleSessions();
+            }, 5 * 60 * 1000);
+
+            console.log('[MCPServer] 🚀 MCP Server is ready for connections (Streamable HTTP + SSE + Direct)');
         } catch (error) {
             console.error('[MCPServer] ❌ Failed to start server:', error);
             throw error;
@@ -159,7 +181,12 @@ export class MCPServer {
         }
 
         // Initialize MCP SDK server
-        this.mcpServer = new McpServer({
+        this.mcpServer = this.createMcpServerInstance();
+        console.log(`[MCPServer] Setup tools: ${this.toolsList.length} tools available via @modelcontextprotocol/sdk`);
+    }
+
+    public createMcpServerInstance(): McpServer {
+        const server = new McpServer({
             name: EXTENSION_NAME,
             version: this.getVersion()
         }, {
@@ -174,7 +201,7 @@ export class MCPServer {
         });
 
         // 1. tools/list: Gemini-safe sanitized schemas without $ref
-        this.mcpServer.server.setRequestHandler(ListToolsRequestSchema, async () => {
+        server.server.setRequestHandler(ListToolsRequestSchema, async () => {
             const tools = this.toolsList.map(tool => ({
                 name: tool.name,
                 description: tool.description,
@@ -184,7 +211,7 @@ export class MCPServer {
         });
 
         // 2. tools/call: AsyncLocalStorage context, headers, and execution
-        this.mcpServer.server.setRequestHandler(CallToolRequestSchema, async (request, extra: any) => {
+        server.server.setRequestHandler(CallToolRequestSchema, async (request, extra: any) => {
             const { name, arguments: args } = request.params;
             const headers: McpRequestHeaders | undefined = extra?.requestInfo?.headers;
 
@@ -208,17 +235,16 @@ export class MCPServer {
         });
 
         // 3. Register MCP Resources
-        this.setupResources();
-
-        console.log(`[MCPServer] Setup tools: ${this.toolsList.length} tools available via @modelcontextprotocol/sdk`);
+        this.setupResources(server);
+        return server;
     }
 
-    private setupResources(): void {
-        if (!this.mcpServer) return;
+    private setupResources(server: McpServer): void {
+        if (!server) return;
 
         // Resource Template: cocos://assets/{ccType}
         const assetTemplate = new ResourceTemplate('cocos://assets/{ccType}', { list: undefined });
-        this.mcpServer.resource(
+        server.resource(
             'project-assets-by-type',
             assetTemplate,
             {
@@ -259,7 +285,7 @@ export class MCPServer {
         );
 
         // Resource: cocos://scene/hierarchy
-        this.mcpServer.resource(
+        server.resource(
             'current-scene-hierarchy',
             'cocos://scene/hierarchy',
             {
@@ -367,8 +393,9 @@ export class MCPServer {
 
         // Set CORS headers
         res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With, Mcp-Session-Id, mcp-session-id, Mcp-Protocol-Version, mcp-protocol-version');
+        res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id, mcp-session-id');
 
         if (req.method === 'OPTIONS') {
             res.writeHead(200);
@@ -377,16 +404,40 @@ export class MCPServer {
         }
 
         try {
-            if (pathname === '/mcp') {
-                if (req.method === 'POST') {
-                    await this.handleMCPRequest(req, res);
+            if (pathname === '/sse') {
+                if (req.method === 'GET') {
+                    await this.handleSSERequest(req, res);
                 } else {
-                    res.writeHead(405, { 'Allow': 'POST', 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ error: 'Method Not Allowed. Use POST for /mcp endpoint' }));
+                    res.writeHead(405, { 'Allow': 'GET, OPTIONS', 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Method Not Allowed. Use GET for /sse endpoint' }));
+                }
+            } else if (pathname === '/messages') {
+                if (req.method === 'POST') {
+                    await this.handleSSEPostMessage(req, res, parsedUrl);
+                } else {
+                    res.writeHead(405, { 'Allow': 'POST, OPTIONS', 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Method Not Allowed. Use POST for /messages endpoint' }));
+                }
+            } else if (pathname === '/mcp') {
+                if (req.method === 'GET') {
+                    await this.handleStreamableHttpGet(req, res, parsedUrl);
+                } else if (req.method === 'POST') {
+                    await this.handleMCPRequest(req, res, parsedUrl);
+                } else if (req.method === 'DELETE') {
+                    await this.handleStreamableHttpDelete(req, res, parsedUrl);
+                } else {
+                    res.writeHead(405, { 'Allow': 'GET, POST, DELETE, OPTIONS', 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Method Not Allowed. Use GET, POST, or DELETE for /mcp endpoint' }));
                 }
             } else if ((pathname === '/health' || pathname === '/api/health') && req.method === 'GET') {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ status: 'ok', tools: this.toolsList.length }));
+                res.end(JSON.stringify({
+                    status: 'ok',
+                    tools: this.toolsList.length,
+                    activeSseSessions: this.sseSessions.size,
+                    activeStreamableSessions: this.streamableSessions.size,
+                    version: this.getVersion()
+                }));
             } else if (pathname?.startsWith('/api/') && req.method === 'POST') {
                 await this.handleSimpleAPIRequest(req, res, pathname);
             } else if (pathname === '/api/tools' && req.method === 'GET') {
@@ -396,58 +447,183 @@ export class MCPServer {
                 res.writeHead(404, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'Not found' }));
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('HTTP request error:', error);
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Internal server error' }));
+            if (!res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Internal server error', details: error?.message }));
+            }
         }
     }
 
-    private async handleMCPRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    private async handleSSERequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+        try {
+            console.log('[MCPServer] ⚡ Establishing new SSE connection on /sse...');
+            const transport = new SSEServerTransport('/messages', res);
+            const server = this.createMcpServerInstance();
+            const sessionId = transport.sessionId;
+
+            this.sseSessions.set(sessionId, {
+                transport,
+                server,
+                lastActive: Date.now()
+            });
+
+            transport.onclose = () => {
+                console.log(`[MCPServer] SSE connection closed for session: ${sessionId}`);
+                this.sseSessions.delete(sessionId);
+            };
+
+            await server.connect(transport);
+            console.log(`[MCPServer] ✅ SSE connection established successfully (sessionId: ${sessionId})`);
+        } catch (error: any) {
+            console.error('[MCPServer] ❌ Failed to establish SSE connection:', error);
+            if (!res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: `Failed to establish SSE connection: ${error.message}` }));
+            }
+        }
+    }
+
+    private async handleSSEPostMessage(req: http.IncomingMessage, res: http.ServerResponse, parsedUrl: url.UrlWithParsedQuery): Promise<void> {
+        const sessionId = (parsedUrl.query.sessionId as string) || (req.headers['mcp-session-id'] as string);
+        if (!sessionId || !this.sseSessions.has(sessionId)) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: `Session not found: ${sessionId || 'missing'}` }));
+            return;
+        }
+
+        const session = this.sseSessions.get(sessionId)!;
+        session.lastActive = Date.now();
+
         let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', async () => {
+            let parsedBody: any = null;
+            if (body && body.trim()) {
+                try {
+                    parsedBody = JSON.parse(body);
+                } catch {
+                    const fixed = fixCommonJsonIssues(body);
+                    try { parsedBody = JSON.parse(fixed); } catch {}
+                }
+            }
 
-        req.on('data', (chunk) => {
-            body += chunk.toString();
+            try {
+                await session.transport.handlePostMessage(req, res, parsedBody);
+            } catch (err: any) {
+                console.error('[MCPServer] Error handling SSE POST message:', err);
+                if (!res.headersSent) {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: err.message }));
+                }
+            }
         });
+    }
 
+    private async handleStreamableHttpGet(req: http.IncomingMessage, res: http.ServerResponse, parsedUrl: url.UrlWithParsedQuery): Promise<void> {
+        const sessionId = (req.headers['mcp-session-id'] as string) || (parsedUrl.query.sessionId as string);
+        if (sessionId && this.streamableSessions.has(sessionId)) {
+            const session = this.streamableSessions.get(sessionId)!;
+            session.lastActive = Date.now();
+            await session.transport.handleRequest(req, res);
+            return;
+        }
+
+        const accept = req.headers['accept'] || '';
+        if (accept.includes('text/event-stream')) {
+            const newSessionId = crypto.randomUUID();
+            const transport = new StreamableHTTPServerTransport({
+                sessionIdGenerator: () => newSessionId,
+                enableJsonResponse: true
+            });
+            const server = this.createMcpServerInstance();
+            this.streamableSessions.set(newSessionId, { transport, server, lastActive: Date.now() });
+
+            transport.onclose = () => {
+                this.streamableSessions.delete(newSessionId);
+            };
+
+            await server.connect(transport);
+            await transport.handleRequest(req, res);
+            return;
+        }
+
+        res.writeHead(405, { 'Allow': 'POST, GET, OPTIONS', 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'GET on /mcp requires Accept: text/event-stream or a valid Mcp-Session-Id' }));
+    }
+
+    private async handleStreamableHttpDelete(req: http.IncomingMessage, res: http.ServerResponse, parsedUrl: url.UrlWithParsedQuery): Promise<void> {
+        const sessionId = (req.headers['mcp-session-id'] as string) || (parsedUrl.query.sessionId as string);
+        if (sessionId && this.streamableSessions.has(sessionId)) {
+            const session = this.streamableSessions.get(sessionId)!;
+            try { await session.transport.close(); } catch {}
+            this.streamableSessions.delete(sessionId);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, message: `Session ${sessionId} closed` }));
+            return;
+        }
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Session not found' }));
+    }
+
+    private async handleMCPRequest(req: http.IncomingMessage, res: http.ServerResponse, parsedUrl: url.UrlWithParsedQuery): Promise<void> {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk.toString(); });
         req.on('end', async () => {
             let parsedMessage: any = null;
             if (body && body.trim()) {
                 try {
                     parsedMessage = JSON.parse(body);
-                } catch (parseError: any) {
-                    // Try to fix common JSON issues
+                } catch {
                     const fixedBody = fixCommonJsonIssues(body);
-                    try {
-                        parsedMessage = JSON.parse(fixedBody);
-                        console.log('[MCPServer] Fixed JSON parsing issue');
-                    } catch {
-                        // ignore and try raw
-                    }
+                    try { parsedMessage = JSON.parse(fixedBody); } catch {}
                 }
             }
 
-            // Attempt Streamable HTTP Transport first if McpServer is initialized
-            if (this.mcpServer) {
+            const sessionId = (req.headers['mcp-session-id'] as string) || (parsedUrl.query.sessionId as string);
+
+            // 1. Existing Streamable HTTP session
+            if (sessionId && this.streamableSessions.has(sessionId)) {
+                const session = this.streamableSessions.get(sessionId)!;
+                session.lastActive = Date.now();
                 try {
+                    await session.transport.handleRequest(req, res, parsedMessage);
+                    return;
+                } catch (err: any) {
+                    console.warn(`[MCPServer] Error handling request in session ${sessionId}:`, err.message);
+                }
+            }
+
+            // 2. Initialize request - create a new Streamable HTTP session
+            const isInit = parsedMessage && (
+                parsedMessage.method === 'initialize' ||
+                (Array.isArray(parsedMessage) && parsedMessage.some((m: any) => m.method === 'initialize'))
+            );
+
+            if (isInit) {
+                try {
+                    const newSessionId = crypto.randomUUID();
                     const transport = new StreamableHTTPServerTransport({
-                        sessionIdGenerator: undefined,
+                        sessionIdGenerator: () => newSessionId,
                         enableJsonResponse: true
                     });
+                    const server = this.createMcpServerInstance();
+                    this.streamableSessions.set(newSessionId, { transport, server, lastActive: Date.now() });
 
-                    res.on('close', () => {
-                        transport.close();
-                    });
+                    transport.onclose = () => {
+                        this.streamableSessions.delete(newSessionId);
+                    };
 
-                    await this.mcpServer.connect(transport);
+                    await server.connect(transport);
                     await transport.handleRequest(req, res, parsedMessage);
                     return;
-                } catch (transportError: any) {
-                    console.warn('[MCPServer] Streamable transport error, falling back to JSON-RPC handler:', transportError?.message);
+                } catch (initErr: any) {
+                    console.error('[MCPServer] Failed Streamable init, falling back to direct JSON-RPC:', initErr);
                 }
             }
 
-            // Fallback: direct JSON-RPC handler
+            // 3. Fallback: Direct JSON-RPC response (for Cursor, CLI, testing tools)
             try {
                 if (!parsedMessage) {
                     throw new Error('Empty request body');
@@ -468,6 +644,24 @@ export class MCPServer {
                 }));
             }
         });
+    }
+
+    private cleanupStaleSessions(): void {
+        const now = Date.now();
+        const MAX_IDLE_MS = 30 * 60 * 1000; // 30 minutes
+
+        for (const [id, session] of this.streamableSessions.entries()) {
+            if (now - session.lastActive > MAX_IDLE_MS) {
+                try { session.transport.close(); } catch {}
+                this.streamableSessions.delete(id);
+            }
+        }
+        for (const [id, session] of this.sseSessions.entries()) {
+            if (now - session.lastActive > MAX_IDLE_MS) {
+                try { session.transport.close(); } catch {}
+                this.sseSessions.delete(id);
+            }
+        }
     }
 
     private async handleMessage(message: any): Promise<any> {
@@ -529,6 +723,21 @@ export class MCPServer {
     }
 
     public stop(): void {
+        if (this.sessionCleanupTimer) {
+            clearInterval(this.sessionCleanupTimer);
+            this.sessionCleanupTimer = null;
+        }
+
+        for (const [id, session] of this.streamableSessions.entries()) {
+            try { session.transport.close(); } catch {}
+        }
+        this.streamableSessions.clear();
+
+        for (const [id, session] of this.sseSessions.entries()) {
+            try { session.transport.close(); } catch {}
+        }
+        this.sseSessions.clear();
+
         if (this.httpServer) {
             this.httpServer.close();
             this.httpServer = null;

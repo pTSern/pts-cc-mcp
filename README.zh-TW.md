@@ -2,9 +2,9 @@
 
 🌐 [English](README.md) · [简体中文](README.zh-CN.md) · **繁體中文** · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Português](README.pt.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Русский](README.ru.md) · [Tiếng Việt](README.vi.md)
 
-一款適用於 Cocos Creator 3.8+ 的綜合性 MCP（模型上下文協議）伺服器外掛，讓 AI 助手能夠透過標準化協議與 Cocos Creator 編輯器進行互動。一鍵安裝即可使用，省去所有繁瑣的環境與設定。已測試過 Claude 客戶端、Claude CLI、Cursor 與 Windsurf，其他編輯器亦能完美支援。
+一款適用於 Cocos Creator 3.8+ 的綜合性 MCP（模型上下文協議）伺服器外掛，讓 AI 助手能夠透過標準化協議與 Cocos Creator 編輯器進行互動。一鍵安裝即可使用，省去所有繁瑣的環境與設定。已測試過 Claude 桌面用戶端、Claude CLI、Cursor 與 Windsurf，其他相容 MCP 的編輯器亦能完美支援。
 
-**🚀 現已提供強大融合工具體系與原子化批次處理能力，實現 99% 的編輯器控制！**
+**🚀 現已提供強大融合工具體系、原子化批次處理能力與原生動畫圖支援，實現 99% 的編輯器控制！**
 
 ## 🙏 致謝與來源聲明
 
@@ -12,16 +12,21 @@
 
 `pts-cc-mcp` 將作為完全開源的社群專案持續迭代演進，現已全面支援：
 - **100% 英文核心程式碼庫**，附帶完整的多語言 i18n 本地化支援
-- **程序內原子批次處理引擎**（`batch_execute` / `editor_batch_execute`）
-- **原生動畫圖狀態機讀寫**（`animgraph_manage`）
-- **安全預製體編輯會話棧**，自動復原場景避免崩潰
+- **程序內原子批次處理執行引擎**（`batch_execute` / `editor_batch_execute`）
+- **原生動畫圖狀態機讀寫與編輯**（`animgraph_manage`）
+- **安全預製體編輯會話棧**，自動復原場景避免退出崩潰
 - **智慧遞迴資源與子資源解析器**（`@spriteFrame`、`@texture`、原生路徑與 UUID）
-- **Spine 與 FastSpine** 角色骨骼一鍵裝配工具
+- **Spine 與 FastSpine** 角色骨骼一鍵自動化裝配工具
 - **TypeScript 編譯器監聽**（`compile_status`），消除腳本修改後的並行衝突
 
 ## 開源版本更新日誌
 
-## 🚀 重大更新 v1.5.4
+### 🚀 重大更新 v1.6.0 (階段 1: 雙協議 Streamable HTTP 與 SSE 傳輸)
+
+- **雙傳輸引擎：原生 Streamable HTTP 與 Server-Sent Events (SSE)**：全面原生支援 `@modelcontextprotocol/sdk` 的 Streamable HTTP（`/mcp`）和 Server-Sent Events（`/sse` 與 `/messages`），並保留無狀態直通 JSON-RPC 兜底端點。提供用戶端獨立會話生命週期管理、閒置會話自動清理以及面向現代 AI IDE（Claude CLI、Cursor、Windsurf、VS Code）的完整 CORS 支援。
+- **解耦場景腳本執行時期並宣告 `pts-core` 對等依賴**：驗證並明確規範對 `pts-core` 外掛中場景腳本執行器（`src/_cc.js`）的對等依賴，確保 MCP 協議層與 Cocos Creator 引擎場景底層操作清晰解耦。
+
+### 🚀 重大更新 v1.5.4
 
 - **程序內原子批次處理 (`batch_execute` / `editor_batch_execute`)**：支援將多個工具呼叫合併為單一事務在程序內順次執行，大幅降低 HTTP 往返與 Token 開銷，支援出錯即停與自動儲存。
 - **動畫圖狀態機支援 (`animgraph_manage`)**：原生讀寫 `.animgraph` 檔案，支援審查狀態/過渡/參數、增刪改 `StateMachineComponent`、批次遷移元件類型，儲存時自動重新整理資源庫。
@@ -44,8 +49,20 @@
   "tool": "batch_execute",
   "arguments": {
     "operations": [
-      { "tool": "node_node_transform", "args": { "nodeUuid": "uuid-1", "position": { "x": 100, "y": 0 } } },
-      { "tool": "component_set_component_property", "args": { "nodeUuid": "uuid-1", "componentType": "cc.Sprite", "property": "spriteFrame", "propertyType": "spriteFrame", "value": "db://assets/textures/hero.png@spriteFrame" } }
+      {
+        "tool": "node_node_transform",
+        "args": { "nodeUuid": "node-uuid", "position": { "x": 100, "y": 50 } }
+      },
+      {
+        "tool": "component_set_component_property",
+        "args": {
+          "nodeUuid": "node-uuid",
+          "componentType": "cc.Sprite",
+          "property": "spriteFrame",
+          "propertyType": "spriteFrame",
+          "value": "db://assets/textures/hero.png@spriteFrame"
+        }
+      }
     ],
     "autoSave": true
   }
@@ -73,13 +90,19 @@
 
 ## 快速使用
 
-**Claude CLI 設定：**
+`pts-cc-mcp` 提供雙傳輸協議支援：**Streamable HTTP**（`/mcp`）與 **Server-Sent Events (SSE)**（`/sse`）。
+
+### 1. Claude CLI 設定
 
 ```bash
+# Streamable HTTP（預設推薦）
 claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
+
+# 或透過 Server-Sent Events (SSE)
+claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
 ```
 
-**Claude 用戶端設定：**
+### 2. Claude 用戶端設定
 
 ```json
 {
@@ -92,7 +115,22 @@ claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
 }
 ```
 
-**Cursor 或 VS Code MCP 設定：**
+*或使用 SSE 協議設定：*
+
+```json
+{
+  "mcpServers": {
+    "cocos-creator": {
+      "type": "sse",
+      "url": "http://127.0.0.1:3000/sse"
+    }
+  }
+}
+```
+
+### 3. Cursor 與 Windsurf 設定
+
+在 Cursor 或 Windsurf MCP 設定（`.cursor/mcp.json`）中：
 
 ```json
 {
@@ -104,26 +142,41 @@ claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
 }
 ```
 
+*（如需使用 SSE 協議，亦可填入 `"url": "http://127.0.0.1:3000/sse"`）。*
+
 ---
 
-## ⚠️ 安裝前必讀（重要）
+## ⚠️ 前置要求與必需對等依賴
 
-> **首次安裝或升級前，請務必刪除目前專案 `settings/` 目錄下的 `mcp-server.json` 和 `tool-manager.json` 兩個檔案，否則外掛的工具清單顯示會出現異常！**
+> **重要提示：`pts-cc-mcp` 依賴專案中已安裝的 `pts-core` 擴充功能。**
 >
-> 檔案路徑：`你的專案/settings/mcp-server.json` 與 `你的專案/settings/tool-manager.json`
-> 刪除這兩個檔案後，重新開啟外掛面板即可恢復正常。
+> **為什麼必須安裝 `pts-core`？**  
+> Cocos Creator 3.8+ 採用多程序架構，其中**編輯器主程序**（`pts-cc-mcp` 執行環境）與**場景執行程序**（執行遊戲場景、元件實體與 live `@ccclass` 引擎環境）完全隔離。  
+>
+> `pts-cc-mcp` 透過向引擎發送 IPC 訊息執行場景指令：`Editor.Message.request('scene', 'execute-scene-script', { name: 'pts-core', method: '...' })`。該場景腳本執行器（`src/_cc.js`）直接託管在 `pts-core` 外掛中。  
+>
+> 如果缺少 `pts-core`，所有依賴活躍場景執行時期的工具（如 `component_*`、`node_node_transform`、`scene_inspect_scene`、`game_*` 和 `component_query_class_info`）將無法與場景節點互動。
+
+> **首次安裝或升級前必讀：**  
+> 請務必刪除目前專案 `settings/` 目錄下的 `mcp-server.json` 和 `tool-manager.json` 兩個檔案，否則外掛的工具清單快取可能會導致顯示異常！  
+> 檔案路徑：`<Project>/settings/mcp-server.json` 與 `<Project>/settings/tool-manager.json`。  
+> 刪除這兩個檔案後，重新開啟擴充功能面板即可自動重新同步全部工具。
 
 ## 安裝說明
 
-### 1. 複製外掛檔案
+### 1. 放置外掛檔案
 
-將整個 `pts-cc-mcp` 資料夾複製到您的 Cocos Creator 專案的 `extensions` 目錄中：
+確保將 `pts-core` 和 `pts-cc-mcp` 兩個擴充功能均放置在 Cocos Creator 專案的 `extensions/` 目錄下：
 
 ```
-您的專案/
+你的專案/
 ├── assets/
 ├── extensions/
-│   └── pts-cc-mcp/                <- 將外掛放在這裡
+│   ├── pts-core/                  <- 必需：核心引擎與場景腳本執行時期 (_cc.js)
+│   │   ├── src/_cc.js
+│   │   ├── package.json
+│   │   └── ...
+│   └── pts-cc-mcp/                <- MCP 伺服器與工具提供方
 │       ├── source/
 │       ├── dist/
 │       ├── package.json
@@ -132,24 +185,26 @@ claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
 └── ...
 ```
 
-### 2. 安裝相依套件
+### 2. 安裝相依套件並建置外掛
 
 ```bash
-cd extensions/pts-cc-mcp
+# 1. 配置 pts-core（若從原始碼建置）
+cd extensions/pts-core
 npm install
-```
+npm run build
 
-### 3. 建置外掛
-
-```bash
+# 2. 配置 pts-cc-mcp
+cd ../pts-cc-mcp
+npm install
 npm run build
 ```
 
-### 4. 啟用外掛
+### 3. 在 Cocos Creator 中啟用外掛
 
-1. 重新啟動 Cocos Creator 或重新整理擴充功能管理器
-2. 外掛將出現在擴充功能功能表中
-3. 點擊 `擴充功能 > pTS MCP Server` 開啟控制面板
+1. 重新啟動 Cocos Creator 或重新整理擴充功能管理器（**擴充功能 > 擴充功能管理器**）。
+2. 確認 **pts-core** 和 **pts-cc-mcp** 兩個擴充功能均已啟用。
+3. 點擊 `擴充功能 > pTS MCP Server` 開啟控制面板。
+4. 預設執行連接埠為 `3000`（可在面板中自訂設定）。
 
 ---
 
@@ -208,4 +263,4 @@ npm run build
 
 ## 授權條款
 
-本外掛供 Cocos Creator 專案使用，原始碼一併打包，可用於學習和交流。
+本外掛供 Cocos Creator 專案使用，原始碼一併打包，可用於學習和開發。

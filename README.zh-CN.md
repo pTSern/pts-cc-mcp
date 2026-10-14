@@ -2,9 +2,9 @@
 
 🌐 [English](README.md) · **简体中文** · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Português](README.pt.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Русский](README.ru.md) · [Tiếng Việt](README.vi.md)
 
-一个适用于 Cocos Creator 3.8+ 的综合性 MCP（模型上下文协议）服务器插件，使 AI 助手能够通过标准化协议与 Cocos Creator 编辑器进行交互。一键安装和使用，省去所有繁琐环境和配置。已经测试过 Claude 客户端、Claude CLI、Cursor 与 Windsurf，其他编辑器亦完美兼容。
+一个适用于 Cocos Creator 3.8+ 的综合性 MCP（模型上下文协议）服务器插件，使 AI 助手能够通过标准化协议与 Cocos Creator 编辑器进行交互。一键安装和使用，省去所有繁琐环境和配置。已经测试过 Claude 桌面客户端、Claude CLI、Cursor 与 Windsurf，其他兼容 MCP 的编辑器亦能完美支持。
 
-**🚀 现已提供强力融合工具体系与原子化批处理能力，实现 99% 的编辑器控制！**
+**🚀 现已提供强力融合工具体系、原子化批处理能力与原生动画图支持，实现 99% 的编辑器控制！**
 
 ## 🙏 致谢与来源声明
 
@@ -12,16 +12,21 @@
 
 `pts-cc-mcp` 将作为完全开源的社区项目持续迭代演进，现已全面支持：
 - **100% 英文核心代码库**，附带完整的多语言 i18n 本地化支持
-- **进程内原子批处理引擎**（`batch_execute` / `editor_batch_execute`）
-- **原生动画图状态机读写**（`animgraph_manage`）
-- **安全预制体编辑会话栈**，自动恢复场景避免崩溃
+- **进程内原子批处理执行引擎**（`batch_execute` / `editor_batch_execute`）
+- **原生动画图状态机读写与编辑**（`animgraph_manage`）
+- **安全预制体编辑会话栈**，自动恢复场景避免退出崩溃
 - **智能递归资源与子资源解析器**（`@spriteFrame`、`@texture`、原生路径与 UUID）
-- **Spine 与 FastSpine** 角色骨骼一键装配工具
+- **Spine 与 FastSpine** 角色骨骼一键自动化装配工具
 - **TypeScript 编译器监听**（`compile_status`），消除脚本修改后的并发冲突
 
 ## 开源版本更新日志
 
-## 🚀 重大更新 v1.5.4
+### 🚀 重大更新 v1.6.0 (阶段 1: 双协议 Streamable HTTP 与 SSE 传输)
+
+- **双传输引擎：原生 Streamable HTTP 与 Server-Sent Events (SSE)**：全面原生支持 `@modelcontextprotocol/sdk` 的 Streamable HTTP（`/mcp`）和 Server-Sent Events（`/sse` 与 `/messages`），并保留无状态直通 JSON-RPC 兜底端点。提供客户端独立会话生命周期管理、空闲会话自动清理以及面向现代 AI IDE（Claude CLI、Cursor、Windsurf、VS Code）的完整 CORS 支持。
+- **解耦场景脚本运行时并声明 `pts-core` 对等依赖**：验证并明确规范对 `pts-core` 插件中场景脚本执行器（`src/_cc.js`）的对等依赖，确保 MCP 协议层与 Cocos Creator 引擎场景底层操作清晰解耦。
+
+### 🚀 重大更新 v1.5.4
 
 - **进程内原子批处理 (`batch_execute` / `editor_batch_execute`)**：支持将多个工具调用合并为单一事务在进程内顺次执行，大幅降低 HTTP 往返与 Token 开销，支持出错立即中断与自动保存。
 - **动画图状态机支持 (`animgraph_manage`)**：原生读写 `.animgraph` 文件，支持审查状态/过渡/参数、增删改 `StateMachineComponent`、批量迁移组件类型，保存时自动刷新资源库。
@@ -44,8 +49,20 @@
   "tool": "batch_execute",
   "arguments": {
     "operations": [
-      { "tool": "node_node_transform", "args": { "nodeUuid": "uuid-1", "position": { "x": 100, "y": 0 } } },
-      { "tool": "component_set_component_property", "args": { "nodeUuid": "uuid-1", "componentType": "cc.Sprite", "property": "spriteFrame", "propertyType": "spriteFrame", "value": "db://assets/textures/hero.png@spriteFrame" } }
+      {
+        "tool": "node_node_transform",
+        "args": { "nodeUuid": "node-uuid", "position": { "x": 100, "y": 50 } }
+      },
+      {
+        "tool": "component_set_component_property",
+        "args": {
+          "nodeUuid": "node-uuid",
+          "componentType": "cc.Sprite",
+          "property": "spriteFrame",
+          "propertyType": "spriteFrame",
+          "value": "db://assets/textures/hero.png@spriteFrame"
+        }
+      }
     ],
     "autoSave": true
   }
@@ -73,13 +90,19 @@
 
 ## 快速使用
 
-**Claude CLI 配置：**
+`pts-cc-mcp` 提供双传输协议支持：**Streamable HTTP**（`/mcp`）与 **Server-Sent Events (SSE)**（`/sse`）。
+
+### 1. Claude CLI 配置
 
 ```bash
+# Streamable HTTP（默认推荐）
 claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
+
+# 或通过 Server-Sent Events (SSE)
+claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
 ```
 
-**Claude 客户端配置：**
+### 2. Claude 客户端配置
 
 ```json
 {
@@ -92,7 +115,22 @@ claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
 }
 ```
 
-**Cursor 或 VS Code MCP 配置：**
+*或使用 SSE 协议配置：*
+
+```json
+{
+  "mcpServers": {
+    "cocos-creator": {
+      "type": "sse",
+      "url": "http://127.0.0.1:3000/sse"
+    }
+  }
+}
+```
+
+### 3. Cursor 与 Windsurf 配置
+
+在 Cursor 或 Windsurf MCP 设置（`.cursor/mcp.json`）中：
 
 ```json
 {
@@ -104,26 +142,41 @@ claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
 }
 ```
 
+*（如需使用 SSE 协议，亦可填入 `"url": "http://127.0.0.1:3000/sse"`）。*
+
 ---
 
-## ⚠️ 安装前必读（重要）
+## ⚠️ 前置要求与必需对等依赖
 
-> **首次安装或升级前，请务必删除当前项目 `settings/` 目录下的 `mcp-server.json` 和 `tool-manager.json` 两个文件，否则插件的工具列表显示会出现异常！**
+> **重要提示：`pts-cc-mcp` 依赖项目中已安装的 `pts-core` 扩展。**
 >
-> 文件路径：`你的项目/settings/mcp-server.json` 与 `你的项目/settings/tool-manager.json`
-> 删除这两个文件后，重新打开插件面板即可恢复正常。
+> **为什么必须安装 `pts-core`？**  
+> Cocos Creator 3.8+ 采用多进程架构，其中**编辑器主进程**（`pts-cc-mcp` 运行环境）与**场景执行进程**（运行游戏场景、组件实例与 live `@ccclass` 引擎环境）完全隔离。  
+>
+> `pts-cc-mcp` 通过向引擎发送 IPC 消息执行场景指令：`Editor.Message.request('scene', 'execute-scene-script', { name: 'pts-core', method: '...' })`。该场景脚本执行器（`src/_cc.js`）直接托管在 `pts-core` 插件中。  
+>
+> 如果缺少 `pts-core`，所有依赖活跃场景运行时的工具（如 `component_*`、`node_node_transform`、`scene_inspect_scene`、`game_*` 和 `component_query_class_info`）将无法与场景节点交互。
+
+> **首次安装或升级前必读：**  
+> 请务必删除当前项目 `settings/` 目录下的 `mcp-server.json` 和 `tool-manager.json` 两个文件，否则插件的工具列表缓存可能会导致显示异常！  
+> 文件路径：`<Project>/settings/mcp-server.json` 与 `<Project>/settings/tool-manager.json`。  
+> 删除这两个文件后，重新打开扩展面板即可自动重新同步全部工具。
 
 ## 安装说明
 
-### 1. 复制插件文件
+### 1. 放置插件文件
 
-将整个 `pts-cc-mcp` 文件夹复制到您的 Cocos Creator 项目的 `extensions` 目录中：
+确保将 `pts-core` 和 `pts-cc-mcp` 两个扩展均放置在 Cocos Creator 项目的 `extensions/` 目录下：
 
 ```
-您的项目/
+你的项目/
 ├── assets/
 ├── extensions/
-│   └── pts-cc-mcp/                <- 将插件放在这里
+│   ├── pts-core/                  <- 必需：核心引擎与场景脚本运行时 (_cc.js)
+│   │   ├── src/_cc.js
+│   │   ├── package.json
+│   │   └── ...
+│   └── pts-cc-mcp/                <- MCP 服务器与工具提供方
 │       ├── source/
 │       ├── dist/
 │       ├── package.json
@@ -132,24 +185,26 @@ claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
 └── ...
 ```
 
-### 2. 安装依赖
+### 2. 安装依赖并构建插件
 
 ```bash
-cd extensions/pts-cc-mcp
+# 1. 配置 pts-core（若从源码构建）
+cd extensions/pts-core
 npm install
-```
+npm run build
 
-### 3. 构建插件
-
-```bash
+# 2. 配置 pts-cc-mcp
+cd ../pts-cc-mcp
+npm install
 npm run build
 ```
 
-### 4. 启用插件
+### 3. 在 Cocos Creator 中启用插件
 
-1. 重启 Cocos Creator 或刷新扩展管理器
-2. 插件将出现在扩展菜单中
-3. 点击 `扩展 > pTS MCP Server` 打开控制面板
+1. 重启 Cocos Creator 或刷新扩展管理器（**扩展 > 扩展管理器**）。
+2. 确认 **pts-core** 和 **pts-cc-mcp** 两个扩展均已启用。
+3. 点击 `扩展 > pTS MCP Server` 打开控制面板。
+4. 默认运行端口为 `3000`（可在面板中自定义配置）。
 
 ---
 
@@ -208,4 +263,4 @@ npm run build
 
 ## 许可证
 
-本插件供 Cocos Creator 项目使用，源代码一并打包，可用于学习和交流。
+本插件供 Cocos Creator 项目使用，源代码一并打包，可用于学习和开发。

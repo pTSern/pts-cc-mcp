@@ -6,22 +6,27 @@ Un plugin serveur MCP (Model Context Protocol) complet pour Cocos Creator 3.8+ p
 
 **🚀 Intègre désormais une architecture d'outils unifiée, l'exécution atomique par lot et la prise en charge native des Animation Graphs pour un contrôle de l'éditeur à 99 % !**
 
-## 🙏 Remerciements et Crédits (Acknowledgments & Credits)
+## 🙏 Remerciements et crédits
 
-Ce projet est issu d'un fork open source de [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) créé par **LiDaxian**. Nous exprimons notre profonde gratitude et notre respect à **LiDaxian** ainsi qu'à tous les contributeurs de la communauté pour avoir posé l'architecture fondatrice permettant l'intégration de l'IA dans Cocos Creator.
+Ce projet est à l'origine un fork open source de [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) créé par **LiDaxian**. Nous exprimons notre sincère gratitude et reconnaissance à **LiDaxian** ainsi qu'à tous les contributeurs de la communauté pour avoir posé les bases architecturales et ouvert la voie au développement Cocos Creator assisté par l'IA.
 
-`pts-cc-mcp` poursuit cette mission en tant qu'extension open source communautaire, intégrant désormais :
-- **Codebase 100% en anglais** avec prise en charge complète de la localisation multi-langues i18n
+`pts-cc-mcp` s'appuie sur ces fondations en tant qu'extension entièrement open source portée par la communauté avec :
+- **Code source 100 % en anglais** avec prise en charge complète de la localisation multilingue i18n
 - **Moteur d'exécution atomique par lot in-process** (`batch_execute` / `editor_batch_execute`)
-- **Édition et inspection natives des graphes d'animation** (`animgraph_manage`)
-- **Pile de sessions de prefab sécurisée** avec récupération automatique évitant les crashs
-- **Résolveur intelligent récursif de ressources et sous-ressources** (`@spriteFrame`, `@texture`, chemins et UUIDs)
-- **Configuration automatisée de rigs de personnages Spine et FastSpine**
-- **Surveillance de l'état du compilateur TypeScript** (`compile_status`) éliminant les conflits de concurrence
+- **Inspection et modification natives des machines d'états d'Animation Graph** (`.animgraph`)
+- **Pile de sessions de prefab sécurisée** avec récupération automatique éliminant les plantages à la sortie de scène
+- **Résolveur récursif intelligent de ressources** (`@spriteFrame`, `@texture`, chemins bruts, UUIDs)
+- **Configuration automatisée de rigs de personnages pour Spine et FastSpine**
+- **Surveillance du compilateur TypeScript** (`compile_status`) éliminant les conditions de concurrence lors de la compilation des scripts
 
 ## Journal des modifications de la version open source
 
-## 🚀 Mise à jour majeure v1.5.4
+### 🚀 Mise à jour majeure v1.6.0 (Phase 1 : Double transport Streamable HTTP et SSE)
+
+- **Moteur de transport double Streamable HTTP et Server-Sent Events (SSE)** : Prise en charge native intégrale de `@modelcontextprotocol/sdk` pour Streamable HTTP (`/mcp`) et Server-Sent Events (`/sse` & `/messages`), aux côtés de l'endpoint direct JSON-RPC de secours sans état. Offre une gestion isolée du cycle de vie des sessions par client, un nettoyage automatique des sessions inactives et des en-têtes CORS complets pour les IDEs IA modernes (Claude CLI, Cursor, Windsurf, VS Code).
+- **Découplage du cœur de scripts de scène** : Dépendance de pairs vérifiée et documentée envers `pts-core` pour l'exécution des scripts de scène (`src/_cc.js`), garantissant une séparation nette entre la traduction du protocole MCP et la manipulation de la scène dans le moteur Cocos Creator.
+
+### 🚀 Mise à jour majeure v1.5.4
 
 - **Exécution atomique par lot in-process (`batch_execute` / `editor_batch_execute`)** : Exécutez plusieurs opérations d'outils en une seule transaction séquentielle IPC in-process. Réduit considérablement les allers-retours HTTP et la consommation de tokens, avec prise en charge de `stopOnError` et sauvegarde automatique de la scène/du prefab.
 - **Moteur d'Animation Graph (`animgraph_manage`)** : Inspection et modification natives des fichiers `.animgraph`. Inspectez les machines d'états, les états, les transitions et les paramètres ; attachez, mettez à jour ou supprimez des `StateMachineComponent`s ; et migrez en bloc les types de classes de composants avec synchronisation automatique de la base de données de ressources.
@@ -85,13 +90,19 @@ Ce projet est issu d'un fork open source de [`cocos-mcp-server`](https://github.
 
 ## Démarrage rapide
 
-**Configuration de Claude CLI :**
+`pts-cc-mcp` fournit une prise en charge de transport double : **Streamable HTTP** (`/mcp`) et **Server-Sent Events (SSE)** (`/sse`).
+
+### 1. Configuration de Claude CLI
 
 ```bash
+# Streamable HTTP (Par défaut)
 claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
+
+# Ou via Server-Sent Events (SSE)
+claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
 ```
 
-**Configuration de Claude Desktop :**
+### 2. Configuration de Claude Desktop
 
 ```json
 {
@@ -104,7 +115,22 @@ claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
 }
 ```
 
-**Configuration MCP pour Cursor ou VS Code :**
+*Ou configuré avec le transport SSE :*
+
+```json
+{
+  "mcpServers": {
+    "cocos-creator": {
+      "type": "sse",
+      "url": "http://127.0.0.1:3000/sse"
+    }
+  }
+}
+```
+
+### 3. Configuration de Cursor et Windsurf
+
+Dans les paramètres MCP de Cursor ou Windsurf (`.cursor/mcp.json`) :
 
 ```json
 {
@@ -116,26 +142,41 @@ claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
 }
 ```
 
+*(Vous pouvez également spécifier `"url": "http://127.0.0.1:3000/sse"` si vous préférez).*
+
 ---
 
-## ⚠️ À lire avant l'installation (Important)
+## ⚠️ Prérequis et dépendance de pairs obligatoire
 
-> **Avant d'installer pour la première fois ou de mettre à jour, veuillez impérativement supprimer les deux fichiers `mcp-server.json` et `tool-manager.json` situés dans le répertoire `settings/` de votre projet, sinon la mise en cache de la liste des outils pourrait provoquer des anomalies d'affichage !**
+> **IMPORTANT : `pts-cc-mcp` nécessite que l'extension `pts-core` soit installée dans votre projet.**
 >
-> Chemins des fichiers : `<Projet>/settings/mcp-server.json` et `<Projet>/settings/tool-manager.json`
+> **Pourquoi `pts-core` est-il obligatoire ?**  
+> Cocos Creator 3.8+ utilise une architecture multi-processus où le **Processus principal de l'éditeur** (où tourne `pts-cc-mcp`) est totalement séparé du **Processus d'exécution de la scène** (où s'exécutent la scène de jeu, les composants et le runtime live du moteur `@ccclass`).  
+>
+> `pts-cc-mcp` exécute les commandes de scène en appelant `Editor.Message.request('scene', 'execute-scene-script', { name: 'pts-core', method: '...' })`. Le script de scène (`src/_cc.js`) est hébergé directement au sein de `pts-core`.  
+>
+> Sans `pts-core`, les outils qui dépendent du runtime de la scène en direct (comme `component_*`, `node_node_transform`, `scene_inspect_scene`, `game_*` et `component_query_class_info`) ne peuvent pas interagir avec les nœuds de la scène.
+
+> **Avant d'installer pour la première fois ou de mettre à jour :**  
+> Veuillez impérativement supprimer les deux fichiers `mcp-server.json` et `tool-manager.json` situés dans le répertoire `settings/` de votre projet, sinon la mise en cache de la liste des outils pourrait provoquer des anomalies d'affichage !  
+> Chemins des fichiers : `<Projet>/settings/mcp-server.json` et `<Projet>/settings/tool-manager.json`.  
 > La réouverture du panneau de l'extension après la suppression de ces deux fichiers resynchronisera proprement tous les outils.
 
 ## Installation
 
-### 1. Copier les fichiers du plugin
+### 1. Positionner les fichiers des extensions
 
-Copiez le dossier `pts-cc-mcp` dans le répertoire `extensions` de votre projet Cocos Creator :
+Assurez-vous de placer À LA FOIS `pts-core` et `pts-cc-mcp` dans le répertoire `extensions/` de votre projet Cocos Creator :
 
 ```
 VotreProjet/
 ├── assets/
 ├── extensions/
-│   └── pts-cc-mcp/                <- Placez le plugin ici
+│   ├── pts-core/                  <- OBLIGATOIRE : Moteur central et runtime de script de scène (_cc.js)
+│   │   ├── src/_cc.js
+│   │   ├── package.json
+│   │   └── ...
+│   └── pts-cc-mcp/                <- Serveur MCP et fournisseur d'outils
 │       ├── source/
 │       ├── dist/
 │       ├── package.json
@@ -144,24 +185,26 @@ VotreProjet/
 └── ...
 ```
 
-### 2. Installer les dépendances
+### 2. Installer et compiler les extensions
 
 ```bash
-cd extensions/pts-cc-mcp
+# 1. Configurer pts-core (si compilation depuis les sources)
+cd extensions/pts-core
 npm install
-```
+npm run build
 
-### 3. Compiler le plugin
-
-```bash
+# 2. Configurer pts-cc-mcp
+cd ../pts-cc-mcp
+npm install
 npm run build
 ```
 
-### 4. Activer le plugin
+### 3. Activer les plugins dans Cocos Creator
 
-1. Redémarrez Cocos Creator ou actualisez le Gestionnaire d'extensions
-2. Le plugin apparaîtra dans le menu Extensions
-3. Cliquez sur `Extensions > pTS MCP Server` pour ouvrir le panneau de contrôle
+1. Redémarrez Cocos Creator ou actualisez le Gestionnaire d'extensions (**Extensions > Gestionnaire d'extensions**).
+2. Vérifiez que **pts-core** et **pts-cc-mcp** sont tous deux activés.
+3. Cliquez sur `Extensions > pTS MCP Server` pour ouvrir le panneau de contrôle.
+4. Le serveur fonctionne par défaut sur le port `3000` (configurable dans le panneau).
 
 ---
 

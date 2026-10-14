@@ -6,22 +6,27 @@ Cocos Creator 3.8+ 용으로 제작된 종합 MCP(Model Context Protocol) 서버
 
 **🚀 통합 도구 아키텍처, 원자적 배치 실행 및 네이티브 애니메이션 그래프 지원을 갖추어 99%의 에디터 제어를 구현합니다!**
 
-## 🙏 감사의 말 및 출처 (Acknowledgments & Credits)
+## 🙏 감사의 글 및 출처 표기
 
-본 프로젝트는 **LiDaxian** 님이 제작한 오픈소스 [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) 포크를 기반으로 2차 개발 및 아키텍처 확장이 이루어졌습니다. Cocos Creator 에디터에 AI 모델 컨텍스트 프로토콜(MCP)을 연결하는 기반 아키텍처를 구축해 주신 **LiDaxian** 님과 커뮤니티 기여자분들께 진심으로 감사의 뜻을 전합니다.
+본 프로젝트는 **LiDaxian** 님이 제작한 오픈소스 프로젝트 [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server)의 포크로 시작되었습니다. Cocos Creator를 위한 AI 모델 컨텍스트 프로토콜(MCP)의 기반 아키텍처를 구축하고 길을 열어주신 **LiDaxian** 님과 모든 커뮤니티 기여자분들께 진심으로 감사와 경의를 표합니다.
 
-`pts-cc-mcp`는 완전한 오픈소스 커뮤니티 프로젝트로서 지속적으로 발전하고 있으며, 현재 다음 기능들을 표준 지원합니다:
-- **100% 영문 코어 코드베이스** 및 완벽한 다국어 i18n 현지화 지원
+`pts-cc-mcp`는 이 기반 위에서 발전하는 완전한 오픈소스 커뮤니티 주도 확장 프로그램으로, 다음 기능을 지원합니다:
+- **100% 영어 코드베이스** 및 다국어 i18n 현지화 지원
 - **프로세스 내 원자적 배치 실행 엔진** (`batch_execute` / `editor_batch_execute`)
-- **네이티브 애니메이션 그래프 상태 머신 편집** (`animgraph_manage`)
-- **안전한 프리팹 세션 스택** 및 자동 복원 (씬 종료 시 충돌 방지)
-- **스마트 재귀적 에셋·서브 에셋 리졸버** (`@spriteFrame`, `@texture`, 경로, UUID)
-- **Spine & FastSpine** 캐릭터 리그 원클릭 자동 셋업
-- **TypeScript 컴파일러 상태 감시** (`compile_status`) (스크립트 수정 후 동시성 충돌 방지)
+- **네이티브 애니메이션 그래프** (`.animgraph`) 상태 머신 검사 및 편집
+- **안전한 프리팹 세션 스택**과 자동 복구를 통한 씬 종료 시 크래시 방지
+- **스마트 재귀 에셋 리졸버** (`@spriteFrame`, `@texture`, 원시 경로, UUID)
+- **Spine 및 FastSpine** 캐릭터 리그 자동 설정
+- **TypeScript 컴파일러 감시기** (`compile_status`)를 통한 스크립트 컴파일 동시성 충돌 해결
 
 ## 오픈소스 버전 업데이트 로그
 
-## 🚀 주요 업데이트 v1.5.4
+### 🚀 주요 업데이트 v1.6.0 (1단계: Dual Streamable HTTP 및 SSE 전송)
+
+- **듀얼 전송 엔진: 네이티브 Streamable HTTP 및 Server-Sent Events (SSE)**: 상태 비저장 직통 JSON-RPC 대체 엔드포인트와 함께 `@modelcontextprotocol/sdk`의 Streamable HTTP(`/mcp`) 및 Server-Sent Events(`/sse` 및 `/messages`)를 완전하게 네이티브 지원합니다. 클라이언트별 독립 세션 라이프사이클 관리, 유휴 세션 자동 정리, 최신 AI IDE(Claude CLI, Cursor, Windsurf, VS Code)를 위한 완벽한 CORS 지원을 제공합니다.
+- **씬 스크립트 코어 분리 및 `pts-core` 피어 의존성 명시**: 씬 스크립트 실행(`src/_cc.js`)을 위한 `pts-core` 피어 의존성을 검증하고 문서화하여, MCP 프로토콜 변환과 Cocos Creator 엔진의 씬 조작 간의 명확한 분리를 구축했습니다.
+
+### 🚀 주요 업데이트 v1.5.4
 
 - **프로세스 내 원자적 배치 실행 (`batch_execute` / `editor_batch_execute`)**: 여러 도구 작업을 단일 프로세스 내 순차 IPC 트랜잭션으로 실행합니다. HTTP 왕복 시간과 Token 소비를 대폭 줄이며, `stopOnError`(오류 시 중단) 및 씬/프리팹 자동 저장을 지원합니다.
 - **애니메이션 그래프 엔진 (`animgraph_manage`)**: `.animgraph` 파일의 네이티브 검사 및 수정을 지원합니다. 상태 머신, 상태(State), 전이(Transition), 매개변수 조사, `StateMachineComponent` 추가·업데이트·제거, 그리고 에셋 데이터베이스 자동 동기화를 통한 컴포넌트 클래스 타입 일괄 마이그레이션을 지원합니다.
@@ -85,13 +90,19 @@ Cocos Creator 3.8+ 용으로 제작된 종합 MCP(Model Context Protocol) 서버
 
 ## 빠른 시작
 
-**Claude CLI 설정:**
+`pts-cc-mcp`는 **Streamable HTTP**(`/mcp`) 및 **Server-Sent Events (SSE)**(`/sse`) 듀얼 전송 방식을 지원합니다.
+
+### 1. Claude CLI 설정
 
 ```bash
+# Streamable HTTP (기본 권장)
 claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
+
+# 또는 Server-Sent Events (SSE) 사용
+claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
 ```
 
-**Claude 데스크톱 설정:**
+### 2. Claude 데스크톱 설정
 
 ```json
 {
@@ -104,7 +115,22 @@ claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
 }
 ```
 
-**Cursor 또는 VS Code MCP 설정:**
+*또는 SSE 전송 방식 설정:*
+
+```json
+{
+  "mcpServers": {
+    "cocos-creator": {
+      "type": "sse",
+      "url": "http://127.0.0.1:3000/sse"
+    }
+  }
+}
+```
+
+### 3. Cursor 및 Windsurf 설정
+
+Cursor 또는 Windsurf의 MCP 설정(`.cursor/mcp.json`):
 
 ```json
 {
@@ -116,26 +142,41 @@ claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
 }
 ```
 
+*(필요한 경우 `"url": "http://127.0.0.1:3000/sse"`로 지정할 수도 있습니다).*
+
 ---
 
-## ⚠️ 설치 전 필독(중요)
+## ⚠️ 필수 선결 조건 및 피어 의존성
 
-> **최초 설치 또는 업그레이드 전, 반드시 프로젝트의 `settings/` 디렉터리 아래에 있는 `mcp-server.json`과 `tool-manager.json` 두 파일을 삭제하세요. 그렇지 않으면 도구 목록 캐시로 인해 표시 이상이 발생할 수 있습니다!**
+> **중요: `pts-cc-mcp`를 사용하려면 프로젝트에 `pts-core` 확장 프로그램이 설치되어 있어야 합니다.**
 >
-> 파일 경로: `<Project>/settings/mcp-server.json` 및 `<Project>/settings/tool-manager.json`
+> **왜 `pts-core`가 필수인가요?**  
+> Cocos Creator 3.8+는 **에디터 메인 프로세스**(`pts-cc-mcp`가 실행되는 곳)와 **씬 실행 프로세스**(게임 씬, 컴포넌트 및 live `@ccclass` 엔진 런타임이 실행되는 곳)가 완전히 분리된 멀티 프로세스 아키텍처를 사용합니다.  
+>
+> `pts-cc-mcp`는 `Editor.Message.request('scene', 'execute-scene-script', { name: 'pts-core', method: '...' })`를 호출하여 엔진에 IPC 요청을 보내 씬 명령을 실행합니다. 이 씬 스크립트(`src/_cc.js`)는 `pts-core` 확장 프로그램 내부에 직접 호스팅되어 있습니다.  
+>
+> `pts-core`가 없으면 라이브 씬 런타임이 필요한 도구(`component_*`, `node_node_transform`, `scene_inspect_scene`, `game_*`, `component_query_class_info` 등)가 씬 노드와 상호작용할 수 없습니다.
+
+> **최초 설치 또는 업그레이드 전 주의사항:**  
+> 반드시 프로젝트의 `settings/` 디렉터리 아래에 있는 `mcp-server.json`과 `tool-manager.json` 두 파일을 삭제하세요. 그렇지 않으면 도구 목록 캐시로 인해 표시 이상이 발생할 수 있습니다!  
+> 파일 경로: `<Project>/settings/mcp-server.json` 및 `<Project>/settings/tool-manager.json`.  
 > 이 두 파일을 삭제한 후 확장 프로그램 패널을 다시 열면 모든 도구가 깨끗하게 재동기화됩니다.
 
 ## 설치 안내
 
-### 1. 플러그인 파일 복사
+### 1. 확장 프로그램 파일 배치
 
-`pts-cc-mcp` 폴더를 Cocos Creator 프로젝트의 `extensions` 디렉터리에 복사합니다:
+`pts-core`와 `pts-cc-mcp` 두 확장 프로그램이 모두 Cocos Creator 프로젝트의 `extensions/` 디렉터리 내에 배치되어 있는지 확인합니다:
 
 ```
 YourProject/
 ├── assets/
 ├── extensions/
-│   └── pts-cc-mcp/                <- 플러그인을 여기에 배치
+│   ├── pts-core/                  <- 필수: 코어 엔진 및 씬 스크립트 런타임 (_cc.js)
+│   │   ├── src/_cc.js
+│   │   ├── package.json
+│   │   └── ...
+│   └── pts-cc-mcp/                <- MCP 서버 및 도구 제공 확장 프로그램
 │       ├── source/
 │       ├── dist/
 │       ├── package.json
@@ -144,24 +185,26 @@ YourProject/
 └── ...
 ```
 
-### 2. 의존성 설치
+### 2. 의존성 설치 및 빌드
 
 ```bash
-cd extensions/pts-cc-mcp
+# 1. pts-core 설정 (소스에서 빌드하는 경우)
+cd extensions/pts-core
 npm install
-```
+npm run build
 
-### 3. 플러그인 빌드
-
-```bash
+# 2. pts-cc-mcp 설정
+cd ../pts-cc-mcp
+npm install
 npm run build
 ```
 
-### 4. 플러그인 활성화
+### 3. Cocos Creator에서 확장 프로그램 활성화
 
-1. Cocos Creator를 재시작하거나 확장 프로그램 관리자를 새로고침합니다
-2. 플러그인이 확장 프로그램 메뉴에 나타납니다
-3. `확장 > pTS MCP Server`를 클릭하여 제어판을 엽니다
+1. Cocos Creator를 재시작하거나 확장 프로그램 관리자를 새로고침합니다(**확장 > 확장 관리자**).
+2. **pts-core**와 **pts-cc-mcp**가 모두 활성화되어 있는지 확인합니다.
+3. `확장 > pTS MCP Server`를 클릭하여 제어판을 엽니다.
+4. 서버는 기본적으로 `3000` 포트에서 실행됩니다(패널에서 변경 가능).
 
 ---
 
@@ -175,7 +218,7 @@ pts-cc-mcp/
 │   ├── mcp-server.ts         # MCP 서버 구현
 │   ├── settings.ts           # 설정 관리
 │   ├── types/                # TypeScript 타입 정의
-│   ├── utils/                # 유틸리티 (asset-resolver.ts, Schema 호환, JSON 유틸리티)
+│   ├── utils/                # 유틸리티 (에셋 리졸버, Schema 호환, JSON 유틸리티)
 │   ├── tools/                # 도구 구현
 │   │   ├── animgraph-tools.ts
 │   │   ├── batch-tools.ts

@@ -21,7 +21,12 @@ This project originated as an open-source fork of [`cocos-mcp-server`](https://g
 
 ## Open-Source Version Changelog
 
-## 🚀 Major Update v1.5.4
+### 🚀 Major Update v1.6.0 (Phase 1: Dual Streamable HTTP & SSE Transport)
+
+- **Dual Streamable HTTP & Server-Sent Events (SSE) Transport Engine**: Full native support for `@modelcontextprotocol/sdk` Streamable HTTP (`/mcp`) and Server-Sent Events (`/sse` & `/messages`) alongside the stateless fallback JSON-RPC endpoint. Provides isolated per-client session lifecycle management, automatic idle session cleanup, and full CORS headers for modern AI IDEs (Claude CLI, Cursor, Windsurf, VS Code).
+- **Scene Script Core Decoupling**: Verified and documented peer dependency on `pts-core` for scene-script execution (`src/_cc.js`), ensuring clean separation between MCP protocol translation and Cocos Creator engine scene manipulation.
+
+### 🚀 Major Update v1.5.4
 
 - **In-Process Atomic Batch Execution (`batch_execute` / `editor_batch_execute`)**: Run multiple tool operations in a single sequential in-process IPC transaction. Drastically reduces HTTP round-trips and token consumption, supporting `stopOnError` and automatic scene/prefab saving.
 - **Animation Graph Engine (`animgraph_manage`)**: Native inspection and modification of `.animgraph` files. Inspect state machines, states, transitions, and parameters; attach, update, or remove `StateMachineComponent`s; and bulk migrate component class types with automatic asset database synchronization.
@@ -85,13 +90,19 @@ This project originated as an open-source fork of [`cocos-mcp-server`](https://g
 
 ## Quick Start
 
-**Claude CLI Configuration:**
+`pts-cc-mcp` provides dual transport support: **Streamable HTTP** (`/mcp`) and **Server-Sent Events (SSE)** (`/sse`).
+
+### 1. Claude CLI Configuration
 
 ```bash
+# Streamable HTTP (Default)
 claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
+
+# Or via Server-Sent Events (SSE)
+claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
 ```
 
-**Claude Desktop Configuration:**
+### 2. Claude Desktop Configuration
 
 ```json
 {
@@ -104,7 +115,22 @@ claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
 }
 ```
 
-**Cursor or VS Code MCP Configuration:**
+*Or configured with SSE transport:*
+
+```json
+{
+  "mcpServers": {
+    "cocos-creator": {
+      "type": "sse",
+      "url": "http://127.0.0.1:3000/sse"
+    }
+  }
+}
+```
+
+### 3. Cursor & Windsurf Configuration
+
+In Cursor or Windsurf MCP Settings (`.cursor/mcp.json`):
 
 ```json
 {
@@ -116,26 +142,41 @@ claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
 }
 ```
 
+*(You may also specify `"url": "http://127.0.0.1:3000/sse"` if preferred).*
+
 ---
 
-## ⚠️ Read Before Installing (Important)
+## ⚠️ Prerequisites & Mandatory Peer Dependency
 
-> **Before installing for the first time or upgrading, please delete `mcp-server.json` and `tool-manager.json` under your project's `settings/` directory, otherwise tool list caching may cause display issues!**
+> **IMPORTANT: `pts-cc-mcp` requires the `pts-core` extension installed in your project.**
 >
-> File paths: `<Project>/settings/mcp-server.json` and `<Project>/settings/tool-manager.json`
+> **Why is `pts-core` mandatory?**  
+> Cocos Creator 3.8+ utilizes a multi-process architecture where the **Editor Main Process** (where `pts-cc-mcp` runs) is completely separated from the **Scene Execution Process** (where the game scene, components, and live `@ccclass` engine runtime execute).  
+>
+> `pts-cc-mcp` executes scene commands by calling `Editor.Message.request('scene', 'execute-scene-script', { name: 'pts-core', method: '...' })`. The scene script (`src/_cc.js`) is hosted directly inside `pts-core`.  
+>
+> Without `pts-core`, tools that require the live scene runtime (such as `component_*`, `node_node_transform`, `scene_inspect_scene`, `game_*`, and `component_query_class_info`) cannot interact with scene nodes.
+
+> **Before installing for the first time or upgrading:**  
+> Please delete `mcp-server.json` and `tool-manager.json` under your project's `settings/` directory, otherwise tool list caching may cause display issues!  
+> File paths: `<Project>/settings/mcp-server.json` and `<Project>/settings/tool-manager.json`.  
 > Reopening the extension panel after deleting these two files will re-sync all tools cleanly.
 
 ## Installation
 
-### 1. Copy Plugin Files
+### 1. Place Extension Files
 
-Copy the `pts-cc-mcp` folder into your Cocos Creator project's `extensions` directory:
+Ensure BOTH `pts-core` and `pts-cc-mcp` are placed inside your Cocos Creator project's `extensions/` directory:
 
 ```
 YourProject/
 ├── assets/
 ├── extensions/
-│   └── pts-cc-mcp/                <- Place plugin here
+│   ├── pts-core/                  <- REQUIRED: Core engine & scene script runtime (_cc.js)
+│   │   ├── src/_cc.js
+│   │   ├── package.json
+│   │   └── ...
+│   └── pts-cc-mcp/                <- MCP Server & Tool provider
 │       ├── source/
 │       ├── dist/
 │       ├── package.json
@@ -144,24 +185,26 @@ YourProject/
 └── ...
 ```
 
-### 2. Install Dependencies
+### 2. Install & Build Extensions
 
 ```bash
-cd extensions/pts-cc-mcp
+# 1. Setup pts-core (if building from source)
+cd extensions/pts-core
 npm install
-```
+npm run build
 
-### 3. Build Plugin
-
-```bash
+# 2. Setup pts-cc-mcp
+cd ../pts-cc-mcp
+npm install
 npm run build
 ```
 
-### 4. Enable Plugin
+### 3. Enable Plugins in Cocos Creator
 
-1. Restart Cocos Creator or reload Extension Manager
-2. The plugin will appear in the Extensions menu
-3. Click `Extensions > pTS MCP Server` to open the control panel
+1. Restart Cocos Creator or reload Extension Manager (**Extensions > Extension Manager**).
+2. Verify that both **pts-core** and **pts-cc-mcp** are enabled.
+3. Click `Extensions > pTS MCP Server` to open the control panel.
+4. The server runs on port `3000` by default (configurable in the panel).
 
 ---
 
