@@ -1358,10 +1358,10 @@ export class NodeTools implements ToolExecutor {
 
     private async getNodeTree(rootUuid?: string, maxDepth: number = 10): Promise<ToolResponse> {
         try {
-            // 使用官方的 query-node-tree API
+            // Use official query-node-tree API
             const nodeTree = await Editor.Message.request('scene', 'query-node-tree', rootUuid);
             
-            // 递归处理节点树，限制深度
+            // Recursively process node tree, limit depth
             const processNode = (node: any, currentDepth: number = 0): any => {
                 if (currentDepth >= maxDepth) {
                     return {
@@ -1421,7 +1421,7 @@ export class NodeTools implements ToolExecutor {
     }
 
     private countTreeNodes(node: any): number {
-        let count = 1; // 当前节点
+        let count = 1; // Current node
         if (node.children && Array.isArray(node.children)) {
             for (const child of node.children) {
                 if (typeof child === 'object' && !child.truncated) {

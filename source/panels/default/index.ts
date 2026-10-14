@@ -4,6 +4,7 @@ import { readFileSync } from 'fs-extra';
 import { join } from 'path';
 import { createApp, App, defineComponent, ref, computed, onMounted, watch } from 'vue';
 import { EXTENSION_NAME } from '../../constants';
+import { enDict, zhDict } from '../../utils/i18n';
 
 const panelDataMap = new WeakMap<any, App>();
 
@@ -48,126 +49,8 @@ module.exports = Editor.Panel.define({
                 setup() {
                     // ==================== i18n System ====================
                     const translations: Record<string, Record<string, string>> = {
-                        en: {
-                            // Brand
-                            brand_name: 'pTS MCP',
-                            brand_tag: 'STUDIO ENGINE BRIDGE',
-                            brand_slogan: 'Cocos Creator 3.8.8 Engine Bridge',
-                            version_label: 'v1.5.4',
-                            // Language
-                            language: 'Language',
-                            // Tabs
-                            tab_server: 'Server Engine',
-                            tab_tools: 'Tool Registry',
-                            // Server tab
-                            server_status: 'Server Status',
-                            status: 'State',
-                            running: 'Running',
-                            stopped: 'Stopped',
-                            connections: 'Active Clients',
-                            start_server: 'Start MCP Server',
-                            stop_server: 'Stop MCP Server',
-                            restart_server: 'Restart Server',
-                            server_settings: 'Engine Configuration',
-                            port: 'Listen Port',
-                            auto_start: 'Auto Start with Cocos',
-                            debug_log: 'Debug Logs',
-                            max_connections: 'Max Connections',
-                            connection_info: 'Connection Endpoints',
-                            http_url: 'MCP Streamable Endpoint',
-                            health_url: 'Health Check Endpoint',
-                            copy: 'Copy',
-                            copied: 'Copied!',
-                            test_connection: 'Test Health',
-                            save_settings: 'Save Configuration',
-                            saved: 'Saved',
-                            // Tools tab
-                            tool_management: 'Tool Registry',
-                            available_tools: 'Registered Tools',
-                            tools_count: 'tools',
-                            enabled: 'enabled',
-                            disabled: 'disabled',
-                            select_all: 'Enable All',
-                            deselect_all: 'Disable All',
-                            save_changes: 'Save Tool Changes',
-                            search_placeholder: 'Search tools by name or description...',
-                            no_tools_found: 'No tools match your search criteria',
-                            // Tool categories
-                            cat_scene: 'Scene & Hierarchy',
-                            cat_node: 'Node Operations',
-                            cat_component: 'Component & Properties',
-                            cat_prefab: 'Prefab Lifecycle',
-                            cat_project: 'Project & Build',
-                            cat_debug: 'Debug & Logs',
-                            cat_preferences: 'Preferences',
-                            cat_server: 'Server Info',
-                            cat_broadcast: 'Broadcast & Events',
-                            cat_sceneView: 'Scene View & Camera',
-                            cat_referenceImage: 'Reference Images',
-                            cat_assetAdvanced: 'Asset Pipeline',
-                            cat_validation: 'Validation & Schemas',
-                            cat_game: 'Gameplay & Runtime Driver',
-                        },
-                        zh: {
-                            // Brand
-                            brand_name: 'pTS MCP',
-                            brand_tag: 'STUDIO ENGINE BRIDGE',
-                            brand_slogan: 'Cocos Creator 3.8.8 引擎桥接服务',
-                            version_label: 'v1.5.4',
-                            // Language
-                            language: '语言',
-                            // Tabs
-                            tab_server: '服务器引擎',
-                            tab_tools: '工具注册表',
-                            // Server tab
-                            server_status: '服务状态',
-                            status: '运行状态',
-                            running: '运行中',
-                            stopped: '已停止',
-                            connections: '活跃客户端',
-                            start_server: '启动 MCP 服务',
-                            stop_server: '停止 MCP 服务',
-                            restart_server: '重启服务器',
-                            server_settings: '引擎配置',
-                            port: '监听端口',
-                            auto_start: '随 Cocos 自动启动',
-                            debug_log: '详细调试日志',
-                            max_connections: '最大连接数',
-                            connection_info: '连接端点',
-                            http_url: 'MCP 协议端点',
-                            health_url: '健康检测端点',
-                            copy: '复制',
-                            copied: '已复制!',
-                            test_connection: '测试健康',
-                            save_settings: '保存配置',
-                            saved: '已保存',
-                            // Tools tab
-                            tool_management: '工具注册表',
-                            available_tools: '已注册工具',
-                            tools_count: '个工具',
-                            enabled: '启用',
-                            disabled: '禁用',
-                            select_all: '全部启用',
-                            deselect_all: '全部禁用',
-                            save_changes: '保存更改',
-                            search_placeholder: '按工具名称或描述搜索...',
-                            no_tools_found: '未找到匹配的工具',
-                            // Tool categories
-                            cat_scene: '场景与层级',
-                            cat_node: '节点操作',
-                            cat_component: '组件与属性',
-                            cat_prefab: '预制体管理',
-                            cat_project: '项目与构建',
-                            cat_debug: '调试与日志',
-                            cat_preferences: '偏好设置',
-                            cat_server: '服务器信息',
-                            cat_broadcast: '广播与事件',
-                            cat_sceneView: '场景视图与相机',
-                            cat_referenceImage: '参考图片',
-                            cat_assetAdvanced: '高级资源管道',
-                            cat_validation: '参数校验',
-                            cat_game: '游戏运行与输入驱动',
-                        }
+                        en: enDict,
+                        zh: zhDict
                     };
 
                     // Language state - English default
@@ -176,7 +59,7 @@ module.exports = Editor.Panel.define({
                     );
 
                     const t = (key: string): string => {
-                        const dict = translations[currentLanguage.value] || translations['en'];
+                        const dict = translations[currentLanguage.value] || translations['en'] || {};
                         return dict[key] || key;
                     };
 

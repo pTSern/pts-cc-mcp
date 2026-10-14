@@ -53,8 +53,7 @@ export class DebugTools implements ToolExecutor {
                             enum: ['all', 'log', 'warn', 'error', 'info'],
                             default: 'all'
                         }
-                    },
-                    required: ['action']
+                    }
                 }
             },
             {
@@ -66,7 +65,8 @@ export class DebugTools implements ToolExecutor {
                         action: {
                             type: 'string',
                             enum: ['read', 'search', 'info'],
-                            description: 'Action: "read" = get recent log entries | "search" = find specific patterns/errors | "info" = get log file information'
+                            description: 'Action: "read" = get recent log entries (default) | "search" = find specific patterns/errors | "info" = get log file information',
+                            default: 'read'
                         },
                         // For read action
                         lines: {
@@ -105,23 +105,51 @@ export class DebugTools implements ToolExecutor {
                             minimum: 0,
                             maximum: 10
                         }
-                    },
-                    required: ['action']
+                    }
                 }
             },
             {
                 name: 'debug_system',
-                description: 'SYSTEM INFORMATION: Get editor version, project details, memory usage, and performance stats. Use this for environment debugging and system monitoring.',
+                description: 'SYSTEM INFORMATION: Get editor version, project details, memory usage, compile status, and performance stats. Use this for environment debugging and system monitoring.',
                 inputSchema: {
                     type: 'object',
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['editor_info', 'performance'],
-                            description: 'Action: "editor_info" = get editor and project information | "performance" = get performance statistics'
+                            enum: ['editor_info', 'performance', 'compile_status'],
+                            description: 'Action: "editor_info" = get editor and project information (default) | "performance" = get performance statistics | "compile_status" = check script compilation state',
+                            default: 'editor_info'
+                        },
+                        wait: {
+                            type: 'boolean',
+                            description: 'Whether to wait for compilation to finish (compile_status action only)',
+                            default: false
+                        },
+                        timeoutMs: {
+                            type: 'number',
+                            description: 'Max timeout in milliseconds (compile_status action only)',
+                            default: 10000
                         }
-                    },
-                    required: ['action']
+                    }
+                }
+            },
+            {
+                name: 'compile_status',
+                description: 'SCRIPT COMPILATION WATCHER: Check if Cocos Creator TS/JS compiler is active or query loaded class status. Supports awaiting compilation completion to prevent race conditions after modifying scripts.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        wait: {
+                            type: 'boolean',
+                            description: 'If true, awaits compilation completion up to timeoutMs (default: false)',
+                            default: false
+                        },
+                        timeoutMs: {
+                            type: 'number',
+                            description: 'Max timeout to wait in milliseconds (default: 10000)',
+                            default: 10000
+                        }
+                    }
                 }
             }
             // NOTE: Node tree functionality moved to node-tools.ts as it's more appropriate there
@@ -136,6 +164,9 @@ export class DebugTools implements ToolExecutor {
                 return await this.handleDebugLogs(args);
             case 'debug_system':
                 return await this.handleDebugSystem(args);
+            case 'compile_status':
+            case 'editor_compile_status':
+                return await this.getCompileStatus(args);
             default:
                 throw new Error(`Unknown tool: ${toolName}`);
         }
@@ -143,43 +174,104 @@ export class DebugTools implements ToolExecutor {
 
     // New integrated handlers
     private async handleDebugConsole(args: any): Promise<ToolResponse> {
-        const { action } = args;
+        const action = args?.action || 'get_logs';
         
         switch (action) {
             case 'get_logs':
-                return await this.getConsoleLogs(args.limit, args.filter);
+                return await this.getConsoleLogs(args?.limit, args?.filter);
             case 'clear':
                 return await this.clearConsole();
             default:
-                return { success: false, error: `Unknown debug console action: ${action}` };
+                return {
+                    success: false,
+                    error: `Unknown debug console action: "${action}". Valid actions: ["get_logs", "clear"]`
+                };
         }
     }
 
     private async handleDebugLogs(args: any): Promise<ToolResponse> {
-        const { action } = args;
+        const action = args?.action || 'read';
         
         switch (action) {
             case 'read':
-                return await this.getProjectLogs(args.lines, args.filterKeyword, args.logLevel);
+                return await this.getProjectLogs(args?.lines, args?.filterKeyword, args?.logLevel);
             case 'search':
-                return await this.searchProjectLogs(args.pattern, args.maxResults, args.contextLines);
+                return await this.searchProjectLogs(args?.pattern, args?.maxResults, args?.contextLines);
             case 'info':
                 return await this.getLogFileInfo();
             default:
-                return { success: false, error: `Unknown debug logs action: ${action}` };
+                return {
+                    success: false,
+                    error: `Unknown debug logs action: "${action}". Valid actions: ["read", "search", "info"]`
+                };
         }
     }
 
     private async handleDebugSystem(args: any): Promise<ToolResponse> {
-        const { action } = args;
+        const action = args?.action || 'editor_info';
         
         switch (action) {
             case 'editor_info':
                 return await this.getEditorInfo();
             case 'performance':
                 return await this.getPerformanceStats();
+            case 'compile_status':
+                return await this.getCompileStatus(args);
             default:
-                return { success: false, error: `Unknown debug system action: ${action}` };
+                return {
+                    success: false,
+                    error: `Unknown debug system action: "${action}". Valid actions: ["editor_info", "performance", "compile_status"]`
+                };
+        }
+    }
+
+    public async getCompileStatus(args: any): Promise<ToolResponse> {
+        const wait = args?.wait === true;
+        const timeoutMs = typeof args?.timeoutMs === 'number' ? args.timeoutMs : 10000;
+        const startTime = Date.now();
+
+        try {
+            let lastClassCount = 0;
+            let ready = false;
+
+            while (Date.now() - startTime <= timeoutMs) {
+                try {
+                    if (typeof Editor !== 'undefined' && Editor.Message) {
+                        const classes = await Editor.Message.request('scene', 'query-classes');
+                        if (Array.isArray(classes)) {
+                            lastClassCount = classes.length;
+                            ready = true;
+                            if (!wait) break;
+                            await new Promise(r => setTimeout(r, 500));
+                            break;
+                        }
+                    } else {
+                        ready = true;
+                        break;
+                    }
+                } catch {
+                    ready = false;
+                }
+
+                if (!wait) break;
+                await new Promise(r => setTimeout(r, 500));
+            }
+
+            return {
+                success: true,
+                message: ready ? 'Scripts compiled and ready' : 'Compiler busy or timeout reached',
+                data: {
+                    ready,
+                    isCompiling: !ready,
+                    classCount: lastClassCount,
+                    durationMs: Date.now() - startTime
+                }
+            };
+        } catch (err: any) {
+            return {
+                success: false,
+                error: `Failed to query compile status: ${err.message || err}`
+            };
         }
     }
 

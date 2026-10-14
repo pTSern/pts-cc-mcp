@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ToolConfig, ToolConfiguration, ToolManagerSettings, ToolDefinition } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
+import { t } from '../utils/i18n';
 
 export class ToolManager {
     private settings: ToolManagerSettings;
@@ -11,10 +12,10 @@ export class ToolManager {
         this.settings = this.readToolManagerSettings();
         this.initializeAvailableTools();
         
-        // 如果没有配置，自动创建一个默认配置
+        // If no configuration exists, automatically create a default configuration
         if (this.settings.configurations.length === 0) {
             console.log('[ToolManager] No configurations found, creating default configuration...');
-            this.createConfiguration('默认配置', '自动创建的默认工具配置');
+            this.createConfiguration(t('default_config_name'), t('default_config_desc'));
         } else {
             this.syncAvailableToolsToConfigurations();
         }
@@ -87,7 +88,7 @@ export class ToolManager {
     private importToolConfiguration(configJson: string): ToolConfiguration {
         try {
             const config = JSON.parse(configJson);
-            // 验证配置格式
+            // Validate configuration format
             if (!config.id || !config.name || !Array.isArray(config.tools)) {
                 throw new Error('Invalid configuration format');
             }
@@ -99,13 +100,14 @@ export class ToolManager {
     }
 
     private initializeAvailableTools(): void {
-        // 从MCP服务器获取真实的工具列表
+        // Retrieve real tool list from MCP server
         try {
             const toolModNames = [
                 './scene-tools', './node-tools', './component-tools', './prefab-tools',
                 './project-tools', './debug-tools', './preferences-tools', './server-tools',
                 './broadcast-tools', './scene-view-tools', './reference-image-tools',
-                './asset-advanced-tools', './validation-tools', './game-tools'
+                './asset-advanced-tools', './validation-tools', './game-tools',
+                './animgraph-tools', './batch-tools'
             ];
             for (const mod of toolModNames) {
                 try {
@@ -113,7 +115,7 @@ export class ToolManager {
                 } catch {}
             }
 
-            // 导入所有工具类
+            // Import all tool classes
             const { SceneTools } = require('./scene-tools');
             const { NodeTools } = require('./node-tools');
             const { ComponentTools } = require('./component-tools');
@@ -128,8 +130,10 @@ export class ToolManager {
             const { AssetAdvancedTools } = require('./asset-advanced-tools');
             const { ValidationTools } = require('./validation-tools');
             const { GameTools } = require('./game-tools');
+            const { AnimgraphTools } = require('./animgraph-tools');
+            const { BatchTools } = require('./batch-tools');
 
-            // 初始化工具实例
+            // Initialize tool instances
             const tools = {
                 scene: new SceneTools(),
                 node: new NodeTools(),
@@ -144,10 +148,12 @@ export class ToolManager {
                 referenceImage: new ReferenceImageTools(),
                 assetAdvanced: new AssetAdvancedTools(),
                 validation: new ValidationTools(),
-                game: new GameTools()
+                game: new GameTools(),
+                animgraph: new AnimgraphTools(),
+                batch: new BatchTools()
             };
 
-            // 从每个工具类获取工具列表
+            // Get tool definitions from each tool class
             this.availableTools = [];
             for (const [category, toolSet] of Object.entries(tools)) {
                 const toolDefinitions = toolSet.getTools();
@@ -155,7 +161,7 @@ export class ToolManager {
                     this.availableTools.push({
                         category: category,
                         name: tool.name,
-                        enabled: true, // 默认启用
+                        enabled: true, // Enabled by default
                         description: tool.description
                     });
                 });
@@ -164,86 +170,86 @@ export class ToolManager {
             console.log(`[ToolManager] Initialized ${this.availableTools.length} tools from MCP server`);
         } catch (error) {
             console.error('[ToolManager] Failed to initialize tools from MCP server:', error);
-            // 如果获取失败，使用默认工具列表作为后备
+            // If failed to load, fallback to default tool definitions
             this.initializeDefaultTools();
         }
     }
 
     private initializeDefaultTools(): void {
-        // 默认工具列表作为后备方案
+        // Fallback default tool list
         const toolCategories = [
-            { category: 'scene', name: '场景工具', tools: [
-                { name: 'getCurrentSceneInfo', description: '获取当前场景信息' },
-                { name: 'getSceneHierarchy', description: '获取场景层级结构' },
-                { name: 'createNewScene', description: '创建新场景' },
-                { name: 'saveScene', description: '保存场景' },
-                { name: 'loadScene', description: '加载场景' }
+            { category: 'scene', name: 'Scene Tools', tools: [
+                { name: 'getCurrentSceneInfo', description: 'Get current scene info' },
+                { name: 'getSceneHierarchy', description: 'Get scene hierarchy' },
+                { name: 'createNewScene', description: 'Create new scene' },
+                { name: 'saveScene', description: 'Save scene' },
+                { name: 'loadScene', description: 'Load scene' }
             ]},
-            { category: 'node', name: '节点工具', tools: [
-                { name: 'getAllNodes', description: '获取所有节点' },
-                { name: 'findNodeByName', description: '根据名称查找节点' },
-                { name: 'createNode', description: '创建节点' },
-                { name: 'deleteNode', description: '删除节点' },
-                { name: 'setNodeProperty', description: '设置节点属性' },
-                { name: 'getNodeInfo', description: '获取节点信息' }
+            { category: 'node', name: 'Node Tools', tools: [
+                { name: 'getAllNodes', description: 'Get all nodes' },
+                { name: 'findNodeByName', description: 'Find node by name' },
+                { name: 'createNode', description: 'Create node' },
+                { name: 'deleteNode', description: 'Delete node' },
+                { name: 'setNodeProperty', description: 'Set node property' },
+                { name: 'getNodeInfo', description: 'Get node info' }
             ]},
-            { category: 'component', name: '组件工具', tools: [
-                { name: 'addComponentToNode', description: '添加组件到节点' },
-                { name: 'removeComponentFromNode', description: '从节点移除组件' },
-                { name: 'setComponentProperty', description: '设置组件属性' },
-                { name: 'getComponentInfo', description: '获取组件信息' }
+            { category: 'component', name: 'Component Tools', tools: [
+                { name: 'addComponentToNode', description: 'Add component to node' },
+                { name: 'removeComponentFromNode', description: 'Remove component from node' },
+                { name: 'setComponentProperty', description: 'Set component property' },
+                { name: 'getComponentInfo', description: 'Get component info' }
             ]},
-            { category: 'prefab', name: '预制体工具', tools: [
-                { name: 'createPrefabFromNode', description: '从节点创建预制体' },
-                { name: 'instantiatePrefab', description: '实例化预制体' },
-                { name: 'getPrefabInfo', description: '获取预制体信息' },
-                { name: 'savePrefab', description: '保存预制体' }
+            { category: 'prefab', name: 'Prefab Tools', tools: [
+                { name: 'createPrefabFromNode', description: 'Create prefab from node' },
+                { name: 'instantiatePrefab', description: 'Instantiate prefab' },
+                { name: 'getPrefabInfo', description: 'Get prefab info' },
+                { name: 'savePrefab', description: 'Save prefab' }
             ]},
-            { category: 'project', name: '项目工具', tools: [
-                { name: 'getProjectInfo', description: '获取项目信息' },
-                { name: 'getAssetList', description: '获取资源列表' },
-                { name: 'createAsset', description: '创建资源' },
-                { name: 'deleteAsset', description: '删除资源' }
+            { category: 'project', name: 'Project Tools', tools: [
+                { name: 'getProjectInfo', description: 'Get project info' },
+                { name: 'getAssetList', description: 'Get asset list' },
+                { name: 'createAsset', description: 'Create asset' },
+                { name: 'deleteAsset', description: 'Delete asset' }
             ]},
-            { category: 'debug', name: '调试工具', tools: [
-                { name: 'getConsoleLogs', description: '获取控制台日志' },
-                { name: 'getPerformanceStats', description: '获取性能统计' },
-                { name: 'validateScene', description: '验证场景' },
-                { name: 'getErrorLogs', description: '获取错误日志' }
+            { category: 'debug', name: 'Debug Tools', tools: [
+                { name: 'getConsoleLogs', description: 'Get console logs' },
+                { name: 'getPerformanceStats', description: 'Get performance stats' },
+                { name: 'validateScene', description: 'Validate scene' },
+                { name: 'getErrorLogs', description: 'Get error logs' }
             ]},
-            { category: 'preferences', name: '偏好设置工具', tools: [
-                { name: 'getPreferences', description: '获取偏好设置' },
-                { name: 'setPreferences', description: '设置偏好设置' },
-                { name: 'resetPreferences', description: '重置偏好设置' }
+            { category: 'preferences', name: 'Preferences Tools', tools: [
+                { name: 'getPreferences', description: 'Get preferences' },
+                { name: 'setPreferences', description: 'Set preferences' },
+                { name: 'resetPreferences', description: 'Reset preferences' }
             ]},
-            { category: 'server', name: '服务器工具', tools: [
-                { name: 'getServerStatus', description: '获取服务器状态' },
-                { name: 'getConnectedClients', description: '获取连接的客户端' },
-                { name: 'getServerLogs', description: '获取服务器日志' }
+            { category: 'server', name: 'Server Tools', tools: [
+                { name: 'getServerStatus', description: 'Get server status' },
+                { name: 'getConnectedClients', description: 'Get connected clients' },
+                { name: 'getServerLogs', description: 'Get server logs' }
             ]},
-            { category: 'broadcast', name: '广播工具', tools: [
-                { name: 'broadcastMessage', description: '广播消息' },
-                { name: 'getBroadcastHistory', description: '获取广播历史' }
+            { category: 'broadcast', name: 'Broadcast Tools', tools: [
+                { name: 'broadcastMessage', description: 'Broadcast message' },
+                { name: 'getBroadcastHistory', description: 'Get broadcast history' }
             ]},
-            { category: 'sceneView', name: '场景视图工具', tools: [
-                { name: 'getViewportInfo', description: '获取视口信息' },
-                { name: 'setViewportCamera', description: '设置视口相机' },
-                { name: 'focusOnNode', description: '聚焦到节点' }
+            { category: 'sceneView', name: 'Scene View Tools', tools: [
+                { name: 'getViewportInfo', description: 'Get viewport info' },
+                { name: 'setViewportCamera', description: 'Set viewport camera' },
+                { name: 'focusOnNode', description: 'Focus on node' }
             ]},
-            { category: 'referenceImage', name: '参考图片工具', tools: [
-                { name: 'addReferenceImage', description: '添加参考图片' },
-                { name: 'removeReferenceImage', description: '移除参考图片' },
-                { name: 'getReferenceImages', description: '获取参考图片列表' }
+            { category: 'referenceImage', name: 'Reference Image Tools', tools: [
+                { name: 'addReferenceImage', description: 'Add reference image' },
+                { name: 'removeReferenceImage', description: 'Remove reference image' },
+                { name: 'getReferenceImages', description: 'Get reference image list' }
             ]},
-            { category: 'assetAdvanced', name: '高级资源工具', tools: [
-                { name: 'importAsset', description: '导入资源' },
-                { name: 'exportAsset', description: '导出资源' },
-                { name: 'processAsset', description: '处理资源' }
+            { category: 'assetAdvanced', name: 'Advanced Asset Tools', tools: [
+                { name: 'importAsset', description: 'Import asset' },
+                { name: 'exportAsset', description: 'Export asset' },
+                { name: 'processAsset', description: 'Process asset' }
             ]},
-            { category: 'validation', name: '验证工具', tools: [
-                { name: 'validateProject', description: '验证项目' },
-                { name: 'validateAssets', description: '验证资源' },
-                { name: 'generateReport', description: '生成报告' }
+            { category: 'validation', name: 'Validation Tools', tools: [
+                { name: 'validateProject', description: 'Validate project' },
+                { name: 'validateAssets', description: 'Validate assets' },
+                { name: 'generateReport', description: 'Generate report' }
             ]}
         ];
 
@@ -253,7 +259,7 @@ export class ToolManager {
                 this.availableTools.push({
                     category: category.category,
                     name: tool.name,
-                    enabled: true, // 默认启用
+                    enabled: true, // Enabled by default
                     description: tool.description
                 });
             });
@@ -279,7 +285,7 @@ export class ToolManager {
 
     public createConfiguration(name: string, description?: string): ToolConfiguration {
         if (this.settings.configurations.length >= this.settings.maxConfigSlots) {
-            throw new Error(`已达到最大配置槽位数量 (${this.settings.maxConfigSlots})`);
+            throw new Error(t('max_config_slots_reached', [this.settings.maxConfigSlots]));
         }
 
         const config: ToolConfiguration = {
@@ -301,7 +307,7 @@ export class ToolManager {
     public updateConfiguration(configId: string, updates: Partial<ToolConfiguration>): ToolConfiguration {
         const configIndex = this.settings.configurations.findIndex(config => config.id === configId);
         if (configIndex === -1) {
-            throw new Error('配置不存在');
+            throw new Error(t('config_not_found'));
         }
 
         const config = this.settings.configurations[configIndex];
@@ -320,12 +326,12 @@ export class ToolManager {
     public deleteConfiguration(configId: string): void {
         const configIndex = this.settings.configurations.findIndex(config => config.id === configId);
         if (configIndex === -1) {
-            throw new Error('配置不存在');
+            throw new Error(t('config_not_found'));
         }
 
         this.settings.configurations.splice(configIndex, 1);
         
-        // 如果删除的是当前配置，清空当前配置ID
+        // If current configuration is deleted, clear or fallback currentConfigId
         if (this.settings.currentConfigId === configId) {
             this.settings.currentConfigId = this.settings.configurations.length > 0 
                 ? this.settings.configurations[0].id 
@@ -338,7 +344,7 @@ export class ToolManager {
     public setCurrentConfiguration(configId: string): void {
         const config = this.settings.configurations.find(config => config.id === configId);
         if (!config) {
-            throw new Error('配置不存在');
+            throw new Error(t('config_not_found'));
         }
 
         this.settings.currentConfigId = configId;
@@ -348,12 +354,12 @@ export class ToolManager {
     public updateToolStatus(configId: string, category: string, toolName: string, enabled: boolean): void {
         const config = this.settings.configurations.find(config => config.id === configId);
         if (!config) {
-            throw new Error('配置不存在');
+            throw new Error(t('config_not_found'));
         }
 
         const tool = config.tools.find(t => t.category === category && t.name === toolName);
         if (!tool) {
-            throw new Error('工具不存在');
+            throw new Error(t('tool_not_found'));
         }
 
         tool.enabled = enabled;
@@ -364,7 +370,7 @@ export class ToolManager {
     public updateToolStatusBatch(configId: string, updates: { category: string; name: string; enabled: boolean }[]): void {
         const config = this.settings.configurations.find(config => config.id === configId);
         if (!config) {
-            throw new Error('配置不存在');
+            throw new Error(t('config_not_found'));
         }
 
         updates.forEach(update => {
@@ -381,7 +387,7 @@ export class ToolManager {
     public exportConfiguration(configId: string): string {
         const config = this.settings.configurations.find(config => config.id === configId);
         if (!config) {
-            throw new Error('配置不存在');
+            throw new Error(t('config_not_found'));
         }
 
         return this.exportToolConfiguration(config);
@@ -390,13 +396,13 @@ export class ToolManager {
     public importConfiguration(configJson: string): ToolConfiguration {
         const config = this.importToolConfiguration(configJson);
         
-        // 生成新的ID和时间戳
+        // Generate new ID and timestamps
         config.id = uuidv4();
         config.createdAt = new Date().toISOString();
         config.updatedAt = new Date().toISOString();
 
         if (this.settings.configurations.length >= this.settings.maxConfigSlots) {
-            throw new Error(`已达到最大配置槽位数量 (${this.settings.maxConfigSlots})`);
+            throw new Error(t('max_config_slots_reached', [this.settings.maxConfigSlots]));
         }
 
         this.settings.configurations.push(config);

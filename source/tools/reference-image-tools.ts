@@ -148,7 +148,7 @@ export class ReferenceImageTools implements ToolExecutor {
     }
 
     private async addReferenceImage(paths: string[]): Promise<ToolResponse> {
-        // 验证路径格式
+        // Validate path format
         const invalidPaths = paths.filter(path => !path || typeof path !== 'string');
         if (invalidPaths.length > 0) {
             return {
@@ -168,7 +168,7 @@ export class ReferenceImageTools implements ToolExecutor {
                 }
             };
         } catch (err: any) {
-            // 增强错误信息
+            // Enhanced error message
             let errorMessage = err.message;
             if (err.message.includes('not found') || err.message.includes('not exist')) {
                 errorMessage = `Image file not found: ${paths.join(', ')}. Please check if the file exists and the path is correct.`;
@@ -205,7 +205,7 @@ export class ReferenceImageTools implements ToolExecutor {
     }
 
     private async switchReferenceImage(path: string, sceneUUID?: string): Promise<ToolResponse> {
-        // 验证路径格式
+        // Validate path format
         if (!path || typeof path !== 'string') {
             return {
                 success: false,
@@ -216,7 +216,7 @@ export class ReferenceImageTools implements ToolExecutor {
         try {
             const args = sceneUUID ? [path, sceneUUID] : [path];
             const result: any = await Editor.Message.request('reference-image', 'switch-image', ...args);
-            // 检查是否有警告信息
+            // Check for warning messages
             const hasWarning = result && (result.warning || result.message?.includes('blank') || result.message?.includes('not found'));
 
             return {
@@ -269,7 +269,7 @@ export class ReferenceImageTools implements ToolExecutor {
     private async queryReferenceImageConfig(): Promise<ToolResponse> {
         try {
             const config: any = await Editor.Message.request('reference-image', 'query-config');
-            // 数据一致性检查
+            // Data consistency check
             const consistencyIssues = this.checkDataConsistency(config);
 
             return {
@@ -297,7 +297,7 @@ export class ReferenceImageTools implements ToolExecutor {
             return issues;
         }
 
-        // 检查配置中的图片列表
+        // Check image list in config
         if (config.images && Array.isArray(config.images)) {
             const deletedImages = config.images.filter((img: any) => 
                 img.path && (img.path.includes('deleted') || img.path.includes('nonexistent'))
@@ -307,12 +307,12 @@ export class ReferenceImageTools implements ToolExecutor {
                 issues.push(`Found ${deletedImages.length} deleted/nonexistent images in configuration`);
             }
 
-            // 检查当前图片是否在列表中
+            // Check if current image is in list
             if (config.current && !config.images.find((img: any) => img.path === config.current)) {
                 issues.push('Current image not found in image list');
             }
 
-            // 检查重复的图片路径
+            // Check for duplicate image paths
             const paths = config.images.map((img: any) => img.path).filter(Boolean);
             const uniquePaths = new Set(paths);
             if (paths.length !== uniquePaths.size) {
@@ -320,7 +320,7 @@ export class ReferenceImageTools implements ToolExecutor {
             }
         }
 
-        // 检查当前图片设置
+        // Check current image settings
         if (config.current && typeof config.current !== 'string') {
             issues.push('Invalid current image path format');
         }

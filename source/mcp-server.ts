@@ -18,16 +18,22 @@ import { EXTENSION_NAME } from './constants';
 declare const Editor: any;
 
 export class MCPServer {
+    private static instance: MCPServer | null = null;
     private settings: MCPServerSettings;
     private httpServer: http.Server | null = null;
     private mcpServer: McpServer | null = null;
     private tools: Record<string, any> = {};
     private toolsList: ToolDefinition[] = [];
-    private enabledTools: any[] = []; // 存储启用的工具列表
+    private enabledTools: any[] = []; // Store list of enabled tools
 
     constructor(settings: MCPServerSettings) {
+        MCPServer.instance = this;
         this.settings = settings;
         this.initializeTools();
+    }
+
+    public static getInstance(): MCPServer | null {
+        return MCPServer.instance;
     }
 
     private getVersion(): string {
@@ -58,7 +64,9 @@ export class MCPServer {
                 assetAdvanced: './tools/asset-advanced-tools',
                 validation: './tools/validation-tools',
                 nexus: './tools/nexus-tools',
-                game: './tools/game-tools'
+                game: './tools/game-tools',
+                animgraph: './tools/animgraph-tools',
+                batch: './tools/batch-tools'
             };
 
             for (const [key, modPath] of Object.entries(toolModules)) {
@@ -119,7 +127,7 @@ export class MCPServer {
     private setupTools(): void {
         this.toolsList = [];
 
-        // 如果没有启用工具配置，返回所有工具
+        // If no tool configuration is enabled, return all tools
         if (!this.enabledTools || this.enabledTools.length === 0) {
             for (const [category, toolSet] of Object.entries(this.tools)) {
                 const tools = toolSet.getTools();
@@ -132,7 +140,7 @@ export class MCPServer {
                 }
             }
         } else {
-            // 根据启用的工具配置过滤
+            // Filter according to enabled tool configuration
             const enabledToolNames = new Set(this.enabledTools.map(tool => `${tool.category}_${tool.name}`));
 
             for (const [category, toolSet] of Object.entries(this.tools)) {
@@ -292,6 +300,28 @@ export class MCPServer {
     }
 
     public async executeToolCall(toolName: string, args: any): Promise<any> {
+        // Direct tool aliases
+        if (toolName === 'editor_batch_execute' || toolName === 'batch_execute') {
+            if (this.tools['batch']) {
+                return await this.tools['batch'].execute('execute', args);
+            }
+        }
+        if (toolName === 'animgraph_manage') {
+            if (this.tools['animgraph']) {
+                return await this.tools['animgraph'].execute('manage', args);
+            }
+        }
+        if (toolName === 'editor_compile_status' || toolName === 'compile_status') {
+            if (this.tools['debug']) {
+                return await this.tools['debug'].execute('compile_status', args);
+            }
+        }
+        if (toolName === 'spine_setup') {
+            if (this.tools['component']) {
+                return await this.tools['component'].execute('spine_setup', args);
+            }
+        }
+
         const parts = toolName.split('_');
         const category = parts[0];
         const toolMethodName = parts.slice(1).join('_');
@@ -324,7 +354,7 @@ export class MCPServer {
     public updateEnabledTools(enabledTools: any[]): void {
         console.log(`[MCPServer] Updating enabled tools: ${enabledTools.length} tools`);
         this.enabledTools = enabledTools;
-        this.setupTools(); // 重新设置工具列表
+        this.setupTools(); // Reset tools list
     }
 
     public getSettings(): MCPServerSettings {

@@ -13,10 +13,10 @@ export class ServerTools implements ToolExecutor {
                         action: {
                             type: 'string',
                             enum: ['get_ip_list', 'get_sorted_ip_list', 'get_port', 'get_comprehensive_status'],
-                            description: 'Information query: "get_ip_list" = all available network IP addresses | "get_sorted_ip_list" = IPs sorted by priority/type | "get_port" = current editor server port number | "get_comprehensive_status" = complete server status with IPs, port, and system info'
+                            description: 'Information query: "get_comprehensive_status" = complete server status (default) | "get_ip_list" = all available network IP addresses | "get_sorted_ip_list" = IPs sorted by priority | "get_port" = current editor server port',
+                            default: 'get_comprehensive_status'
                         }
-                    },
-                    required: ['action']
+                    }
                 }
             },
 
@@ -30,17 +30,17 @@ export class ServerTools implements ToolExecutor {
                         action: {
                             type: 'string',
                             enum: ['test_connectivity', 'get_network_interfaces'],
-                            description: 'Connectivity operation: "test_connectivity" = verify server connection and response time (optional timeout parameter) | "get_network_interfaces" = detailed network adapter and interface information (no parameters needed)'
+                            description: 'Connectivity operation: "test_connectivity" = verify server connection and response time (default) | "get_network_interfaces" = detailed network adapter and interface information',
+                            default: 'test_connectivity'
                         },
                         timeout: {
                             type: 'number',
-                            description: 'Connection timeout duration (test_connectivity action). Milliseconds to wait for server response. Examples: 1000 for quick test, 5000 for standard check, 10000 for slow networks. Default: 5000ms provides good balance between speed and reliability.',
+                            description: 'Connection timeout duration (test_connectivity action). Milliseconds to wait for server response. Default: 5000ms.',
                             default: 5000,
                             minimum: 1000,
                             maximum: 30000
                         }
-                    },
-                    required: ['action']
+                    }
                 }
             }
         ];
@@ -220,7 +220,10 @@ export class ServerTools implements ToolExecutor {
 
     // New handler methods for optimized tools
     private async handleServerInformation(args: any): Promise<ToolResponse> {
-        const { action } = args;
+        let action = args?.action;
+        if (!action || action === 'status' || action === 'info') {
+            action = 'get_comprehensive_status';
+        }
         
         switch (action) {
             case 'get_ip_list':
@@ -232,12 +235,19 @@ export class ServerTools implements ToolExecutor {
             case 'get_comprehensive_status':
                 return await this.getServerStatus();
             default:
-                return { success: false, error: `Unknown server information action: ${action}` };
+                return {
+                    success: false,
+                    error: `Unknown server information action: "${action}". Valid actions: ["get_comprehensive_status", "get_ip_list", "get_sorted_ip_list", "get_port"]`
+                };
         }
     }
 
     private async handleServerConnectivity(args: any): Promise<ToolResponse> {
-        const { action, timeout } = args;
+        let action = args?.action;
+        if (!action || action === 'status' || action === 'test') {
+            action = 'test_connectivity';
+        }
+        const timeout = args?.timeout;
         
         switch (action) {
             case 'test_connectivity':
@@ -245,7 +255,10 @@ export class ServerTools implements ToolExecutor {
             case 'get_network_interfaces':
                 return await this.getNetworkInterfaces();
             default:
-                return { success: false, error: `Unknown server connectivity action: ${action}` };
+                return {
+                    success: false,
+                    error: `Unknown server connectivity action: "${action}". Valid actions: ["test_connectivity", "get_network_interfaces"]`
+                };
         }
     }
 

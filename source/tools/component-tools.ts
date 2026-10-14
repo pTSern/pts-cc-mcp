@@ -1,5 +1,6 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, ComponentInfo } from '../types';
 import { EXTENSION_NAME, SCENE_SCRIPT_TARGET } from '../constants';
+import { AssetResolver } from '../utils/asset-resolver';
 
 export class ComponentTools implements ToolExecutor {
     getTools(): ToolDefinition[] {
@@ -71,7 +72,7 @@ export class ComponentTools implements ToolExecutor {
                             type: 'string',
                             description: 'Component type identifier (REQUIRED). BUILT-IN: "cc.Label", "cc.Sprite", "cc.Button", "cc.UITransform". SCRIPTS: Use compressed UUID format like "3b6be0raOhG54eGN2c5M4cN" (get from component_query). CRITICAL: Use exact type string from component_query list action!'
                         },
-                        // 支持单个属性设置的旧格式（向后兼容）
+                        // Support legacy format for single property setting (backward compatibility)
                         property: {
                             type: 'string',
                             description: 'Property name for single property setting. Examples: "string" (Label text), "fontSize" (Label size), "spriteFrame" (Sprite image), "color" (visual color), "player" (script node reference). Check component_query for available properties.'
@@ -89,7 +90,7 @@ export class ComponentTools implements ToolExecutor {
                         value: {
                             description: 'Property value - format depends on propertyType. STRING: "Hello World", NUMBER: 42, BOOLEAN: true/false, COLOR: {"r":255,"g":0,"b":0,"a":255} or "#FF0000", VEC2: {"x":100,"y":50}, SIZE: {"width":200,"height":100}, NODE/ASSET: "uuid-string", ARRAYS: [...values]. See examples in properties description.'
                         },
-                        // 新的批量属性设置格式
+                        // New batch property setting format
                         properties: {
                             type: 'object',
                             description: 'BATCH PROPERTY SETTING: Set multiple properties simultaneously for efficiency. Each property MUST specify exact type and value. CRITICAL: Property names must match exactly (case-sensitive), types must be accurate. Use component_query to inspect property types first!\n\n' +
@@ -213,6 +214,46 @@ export class ComponentTools implements ToolExecutor {
                     },
                     required: ['className']
                 }
+            },
+
+            // 7. Spine / FastSpine Character Setup Helper
+            {
+                name: 'spine_setup',
+                description: 'SPINE / FASTSPINE CHARACTER SETUP: Helper tool to attach FastSpine (or sp.Skeleton) to a node, bind skeleton data asset, configure default animation, loop mode, and ensure UITransform setup in one call.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        nodeUuid: {
+                            type: 'string',
+                            description: 'Target node UUID (REQUIRED).'
+                        },
+                        spineAssetPath: {
+                            type: 'string',
+                            description: 'Path or UUID to Spine/FastSpine skeleton data (e.g. "db://assets/.../character.fastspine.bin" or ".json") (REQUIRED).'
+                        },
+                        defaultAnimation: {
+                            type: 'string',
+                            description: 'Default animation name (e.g. "Idle", "walk").'
+                        },
+                        loop: {
+                            type: 'boolean',
+                            description: 'Whether animation should loop.',
+                            default: true
+                        },
+                        componentType: {
+                            type: 'string',
+                            enum: ['FastSpine', 'sp.Skeleton'],
+                            description: 'Target component class ("FastSpine" or "sp.Skeleton"). Default: "FastSpine".',
+                            default: 'FastSpine'
+                        },
+                        autoSave: {
+                            type: 'boolean',
+                            description: 'Whether to automatically save scene/prefab after setup.',
+                            default: true
+                        }
+                    },
+                    required: ['nodeUuid', 'spineAssetPath']
+                }
             }
         ];
     }
@@ -231,7 +272,9 @@ export class ComponentTools implements ToolExecutor {
                 return await this.updateComponent(args);
             case 'query_class_info':
                 return await this.queryClassInfo(args);
-            // 向后兼容性支持
+            case 'spine_setup':
+                return await this.handleSpineSetup(args);
+            // Backward compatibility support
             case 'add_component':
                 return await this.addComponents(args.nodeUuid, args.componentType);
             case 'remove_component':
@@ -247,7 +290,7 @@ export class ComponentTools implements ToolExecutor {
         }
     }
 
-    // 新的整合处理函数
+    // New consolidated handler function
     private async handleComponentManage(args: any): Promise<ToolResponse> {
         const { action, nodeUuid, componentType } = args;
         
@@ -256,6 +299,8 @@ export class ComponentTools implements ToolExecutor {
                 return await this.addComponents(nodeUuid, componentType);
             case 'remove':
                 return await this.removeComponent(nodeUuid, componentType);
+            case 'spine_setup':
+                return await this.handleSpineSetup(args);
             default:
                 return { success: false, error: `Unknown component manage action: ${action}` };
         }
@@ -277,7 +322,7 @@ export class ComponentTools implements ToolExecutor {
     }
 
     /**
-     * 获取组件添加成功后的特定提醒信息
+     * Get specific notification messages after successfully adding a component
      */
     private getComponentReminder(componentType: string): string {
         const reminders: { [key: string]: string } = {
@@ -297,19 +342,19 @@ export class ComponentTools implements ToolExecutor {
     }
 
     private async addComponents(nodeUuid: string, componentTypes: string | string[]): Promise<ToolResponse> {
-        // 将输入标准化为数组
+        // Normalize input to an array
         const typesToAdd = Array.isArray(componentTypes) ? componentTypes : [componentTypes];
         
         if (typesToAdd.length === 0) {
             return { success: false, error: 'No component types provided' };
         }
         
-        // 如果只有一个组件，使用原有的单个组件添加逻辑
+        // If there is only one component, use the original single component add logic
         if (typesToAdd.length === 1) {
             return await this.addComponent(nodeUuid, typesToAdd[0]);
         }
         
-        // 批量添加多个组件
+        // Batch add multiple components
         return await this.addMultipleComponents(nodeUuid, typesToAdd);
     }
 
@@ -363,7 +408,7 @@ export class ComponentTools implements ToolExecutor {
     }
 
     private async addComponent(nodeUuid: string, componentType: string): Promise<ToolResponse> {
-        // 先查找节点上是否已存在该组件
+        // First check if the component already exists on the node
         const allComponentsInfo = await this.getComponents(nodeUuid);
         if (allComponentsInfo.success && allComponentsInfo.data?.components) {
             const existingComponent = allComponentsInfo.data.components.find((comp: any) => comp.type === componentType);
@@ -385,15 +430,15 @@ export class ComponentTools implements ToolExecutor {
                 };
             }
         }
-        // 尝试直接使用 Editor API 添加组件
+        // Attempt to add component directly using Editor API
         try {
             await Editor.Message.request('scene', 'create-component', {
                 uuid: nodeUuid,
                 component: componentType
             });
-            // 等待一段时间让Editor完成组件添加
+            // Wait a short time for Editor to complete adding the component
             await new Promise(resolve => setTimeout(resolve, 100));
-            // 重新查询节点信息验证组件是否真的添加成功
+            // Re-query node info to verify if the component was successfully added
             try {
                 const allComponentsInfo2 = await this.getComponents(nodeUuid);
                 if (allComponentsInfo2.success && allComponentsInfo2.data?.components) {
@@ -433,7 +478,7 @@ export class ComponentTools implements ToolExecutor {
                 };
             }
         } catch (err: any) {
-            // 备用方案：使用场景脚本
+            // Fallback: use scene script
             const options = {
                 name: SCENE_SCRIPT_TARGET,
                 method: 'addComponentToNode',
@@ -449,25 +494,25 @@ export class ComponentTools implements ToolExecutor {
     }
 
     private async removeComponent(nodeUuid: string, componentType: string): Promise<ToolResponse> {
-        // 1. 查找节点上的所有组件
+        // 1. Find all components on the node
         const allComponentsInfo = await this.getComponents(nodeUuid);
         if (!allComponentsInfo.success || !allComponentsInfo.data?.components) {
             return { success: false, error: `Failed to get components for node '${nodeUuid}': ${allComponentsInfo.error}` };
         }
 
-        // 2. 查找type字段等于componentType的组件索引
+        // 2. Find the component index where type field equals componentType
         const componentIndex = allComponentsInfo.data.components.findIndex((comp: any) => comp.type === componentType);
         if (componentIndex === -1) {
-            return { success: false, error: `Component cid '${componentType}' not found on node '${nodeUuid}'. 请用getComponents获取type字段（cid）作为componentType。` };
+            return { success: false, error: `Component cid '${componentType}' not found on node '${nodeUuid}'. Please use getComponents to get the type field (cid) as componentType.` };
         }
 
-        // 3. 尝试多种API方法移除组件
+        // 3. Try multiple API methods to remove component
         try {
             console.log(`Attempting to remove component at index ${componentIndex} (type: ${componentType}) from node ${nodeUuid}`);
 
             let removeSuccessful = false;
 
-            // 方法1: 使用remove-array-element API（基于消息日志）
+            // Method 1: Use remove-array-element API (based on message logs)
             try {
                 await Editor.Message.request('scene', 'remove-array-element', {
                     uuid: nodeUuid,
@@ -479,7 +524,7 @@ export class ComponentTools implements ToolExecutor {
                 console.log(`remove-array-element failed:`, removeError);
             }
 
-            // 方法2: 尝试delete-component API
+            // Method 2: Try delete-component API
             if (!removeSuccessful) {
                 try {
                     await Editor.Message.request('scene', 'delete-component', {
@@ -492,7 +537,7 @@ export class ComponentTools implements ToolExecutor {
                 }
             }
 
-            // 方法3: 备用方案 - 使用原始remove-component API但使用索引
+            // Method 3: Fallback - use original remove-component API with index
             if (!removeSuccessful) {
                 try {
                     await Editor.Message.request('scene', 'remove-component', {
@@ -505,7 +550,7 @@ export class ComponentTools implements ToolExecutor {
                 }
             }
 
-            // 方法4: 尝试使用类型名的remove-component API（原始代码）
+            // Method 4: Try remove-component API with type name (original code)
             if (!removeSuccessful) {
                 try {
                     await Editor.Message.request('scene', 'remove-component', {
@@ -518,7 +563,7 @@ export class ComponentTools implements ToolExecutor {
                 }
             }
 
-            // 4. 再查一次确认是否移除
+            // 4. Query once more to confirm whether it was removed
             const afterRemoveInfo = await this.getComponents(nodeUuid);
             const stillExists = afterRemoveInfo.success && afterRemoveInfo.data?.components?.some((comp: any) => comp.type === componentType);
             console.log(`After removal - components count: ${afterRemoveInfo.data?.components?.length}, still exists: ${stillExists}`);
@@ -539,7 +584,7 @@ export class ComponentTools implements ToolExecutor {
     }
 
     private async getComponents(nodeUuid: string): Promise<ToolResponse> {
-        // 优先尝试直接使用 Editor API 查询节点信息
+        // Prefer querying node info directly using Editor API
         try {
             const nodeData = await Editor.Message.request('scene', 'query-node', nodeUuid);
             if (nodeData && nodeData.__comps__) {
@@ -561,7 +606,7 @@ export class ComponentTools implements ToolExecutor {
                 return { success: false, error: 'Node not found or no components data' };
             }
         } catch (err: any) {
-            // 备用方案：使用场景脚本
+            // Fallback: use scene script
             const options = {
                 name: SCENE_SCRIPT_TARGET,
                 method: 'getNodeInfo',
@@ -585,7 +630,7 @@ export class ComponentTools implements ToolExecutor {
     }
 
     private async getComponentInfo(nodeUuid: string, componentType: string): Promise<ToolResponse> {
-        // 优先尝试直接使用 Editor API 查询节点信息
+        // Prefer querying node info directly using Editor API
         try {
             const nodeData = await Editor.Message.request('scene', 'query-node', nodeUuid);
             if (nodeData && nodeData.__comps__) {
@@ -611,7 +656,7 @@ export class ComponentTools implements ToolExecutor {
                 return { success: false, error: 'Node not found or no components data' };
             }
         } catch (err: any) {
-            // 备用方案：使用场景脚本
+            // Fallback: use scene script
             const options = {
                 name: SCENE_SCRIPT_TARGET,
                 method: 'getNodeInfo',
@@ -646,13 +691,13 @@ export class ComponentTools implements ToolExecutor {
     private extractComponentProperties(component: any): Record<string, any> {
         console.log(`[extractComponentProperties] Processing component:`, Object.keys(component));
         
-        // 检查组件是否有 value 属性，这通常包含实际的组件属性
+        // Check if component has a value property, which usually contains actual component properties
         if (component.value && typeof component.value === 'object') {
             console.log(`[extractComponentProperties] Found component.value with properties:`, Object.keys(component.value));
-            return component.value; // 直接返回 value 对象，它包含所有组件属性
+            return component.value; // Directly return value object, which contains all component properties
         }
         
-        // 备用方案：从组件对象中直接提取属性
+        // Fallback: extract properties directly from component object
         const properties: Record<string, any> = {};
         const excludeKeys = ['__type__', 'enabled', 'node', '_id', '__scriptAsset', 'uuid', 'name', '_name', '_objFlags', '_enabled', 'type', 'readonly', 'visible', 'cid', 'editor', 'extends'];
         
@@ -720,12 +765,12 @@ export class ComponentTools implements ToolExecutor {
     }
 
     private async setComponentProperties(args: any): Promise<ToolResponse> {
-        // 检查是单个属性设置还是批量属性设置
+        // Check whether it is a single property setting or batch property setting
         if (args.properties) {
-            // 批量属性设置
+            // Batch property setting
             return await this.setMultipleComponentProperties(args);
         } else if (args.property && args.propertyType && args.value !== undefined) {
-            // 单个属性设置（propertyType是必需的）
+            // Single property setting (propertyType is required)
             return await this.setComponentProperty(args);
         } else {
             return {
@@ -821,13 +866,13 @@ export class ComponentTools implements ToolExecutor {
         try {
             console.log(`[ComponentTools] Setting ${componentType}.${property} (type: ${propertyType}) = ${JSON.stringify(value)} on node ${nodeUuid}`);
 
-            // Step 0: 检测是否为节点属性，如果是则重定向到对应的节点方法
+            // Step 0: Check if it is a node property, redirect to corresponding node method if so
             const nodeRedirectResult = await this.checkAndRedirectNodeProperties(args);
             if (nodeRedirectResult) {
                 return nodeRedirectResult;
             }
 
-            // Step 1: 获取组件信息，使用与getComponents相同的方法
+            // Step 1: Get component info using the same method as getComponents
             const componentsResponse = await this.getComponents(nodeUuid);
             if (!componentsResponse.success || !componentsResponse.data) {
                 return {
@@ -839,7 +884,7 @@ export class ComponentTools implements ToolExecutor {
 
             const allComponents = componentsResponse.data.components;
 
-            // Step 2: 查找目标组件
+            // Step 2: Find target component
             let targetComponent = null;
             const availableTypes: string[] = [];
 
@@ -854,7 +899,7 @@ export class ComponentTools implements ToolExecutor {
             }
 
             if (!targetComponent) {
-                // 提供更详细的错误信息和建议
+                // Provide more detailed error message and suggestions
                 const instruction = this.generateComponentSuggestion(componentType, availableTypes, property);
                 return {
                     success: false,
@@ -863,7 +908,7 @@ export class ComponentTools implements ToolExecutor {
                 };
             }
 
-            // Step 3: 自动检测和转换属性值
+            // Step 3: Automatically detect and convert property value
             let propertyInfo;
             try {
                 console.log(`[ComponentTools] Analyzing property: ${property}`);
@@ -883,11 +928,11 @@ export class ComponentTools implements ToolExecutor {
                 };
             }
 
-            // Step 4: 处理属性值和设置
+            // Step 4: Process property value and set
             const originalValue = propertyInfo.originalValue;
             let processedValue: any;
 
-            // 检查是否提供了必需的propertyType
+            // Check if required propertyType is provided
             if (!propertyType) {
                 return {
                     success: false,
@@ -898,7 +943,7 @@ export class ComponentTools implements ToolExecutor {
                 
                 let finalPropertyType = propertyType;
                 
-                // 根据明确的propertyType处理属性值
+                // Process property value according to explicit propertyType
                 switch (finalPropertyType) {
                     case 'string':
                         processedValue = String(value);
@@ -913,10 +958,10 @@ export class ComponentTools implements ToolExecutor {
                         break;
                     case 'color':
                         if (typeof value === 'string') {
-                            // 字符串格式：支持十六进制、颜色名称、rgb()/rgba()
+                            // String format: support hexadecimal, color name, rgb()/rgba()
                             processedValue = this.parseColorString(value);
                         } else if (typeof value === 'object' && value !== null) {
-                            // 对象格式：验证并转换RGBA值
+                            // Object format: validate and convert RGBA values
                             processedValue = {
                                 r: Math.min(255, Math.max(0, Number(value.r) || 0)),
                                 g: Math.min(255, Math.max(0, Number(value.g) || 0)),
@@ -971,19 +1016,29 @@ export class ComponentTools implements ToolExecutor {
                         break;
                     case 'component':
                         if (typeof value === 'string') {
-                            // 组件引用需要特殊处理：通过节点UUID找到组件的__id__
-                            processedValue = value; // 先保存节点UUID，后续会转换为__id__
+                            // Component references require special handling: find component __id__ via node UUID
+                            processedValue = value; // Save node UUID first, will be converted to __id__ later
                         } else {
                             throw new Error('Component reference value must be a string (node UUID containing the target component)');
                         }
                         break;
                     case 'spriteFrame':
+                        if (typeof value === 'string') {
+                            const resolved = await AssetResolver.resolve(value, 'spriteFrame');
+                            const targetUuid = (resolved && resolved.resolvedUuid) ? resolved.resolvedUuid : value;
+                            processedValue = { uuid: targetUuid };
+                        } else {
+                            throw new Error('spriteFrame value must be a string UUID or asset path');
+                        }
+                        break;
                     case 'prefab':
                     case 'asset':
                         if (typeof value === 'string') {
-                            processedValue = { uuid: value };
+                            const resolved = await AssetResolver.resolve(value);
+                            const targetUuid = (resolved && (resolved.resolvedUuid || resolved.uuid)) ? (resolved.resolvedUuid || resolved.uuid) : value;
+                            processedValue = { uuid: targetUuid };
                         } else {
-                            throw new Error(`${finalPropertyType} value must be a string UUID`);
+                            throw new Error(`${finalPropertyType} value must be a string UUID or asset path`);
                         }
                         break;
                     case 'nodeArray':
@@ -1039,10 +1094,10 @@ export class ComponentTools implements ToolExecutor {
                 console.log(`[ComponentTools] Property analysis result: propertyInfo.type="${propertyInfo.type}", propertyType="${finalPropertyType}"`);
                 console.log(`[ComponentTools] Will use color special handling: ${finalPropertyType === 'color' && processedValue && typeof processedValue === 'object'}`);
                 
-                // 用于验证的实际期望值（对于组件引用需要特殊处理）
+                // Actual expected value for verification (special handling needed for component references)
                 let actualExpectedValue = processedValue;
                 
-                // Step 5: 获取原始节点数据来构建正确的路径
+                // Step 5: Get raw node data to build the correct path
                 const rawNodeData = await Editor.Message.request('scene', 'query-node', nodeUuid);
                 if (!rawNodeData || !rawNodeData.__comps__) {
                     return {
@@ -1051,7 +1106,7 @@ export class ComponentTools implements ToolExecutor {
                     };
                 }
 
-                // 找到原始组件的索引
+                // Find index of the original component
                 let rawComponentIndex = -1;
                 for (let i = 0; i < rawNodeData.__comps__.length; i++) {
                     const comp = rawNodeData.__comps__[i] as any;
@@ -1069,10 +1124,10 @@ export class ComponentTools implements ToolExecutor {
                     };
                 }
                 
-                // 构建正确的属性路径
+                // Build the correct property path
                 let propertyPath = `__comps__.${rawComponentIndex}.${property}`;
                 
-                // 特殊处理资源类属性
+                // Special handling for asset properties
                 if (finalPropertyType === 'asset' || finalPropertyType === 'spriteFrame' || finalPropertyType === 'prefab' || 
                     (propertyInfo.type === 'asset' && finalPropertyType === 'string')) {
                     
@@ -1144,8 +1199,8 @@ export class ComponentTools implements ToolExecutor {
                         dump: { value: anchorY }
                     });
                 } else if (propertyType === 'color' && processedValue && typeof processedValue === 'object') {
-                    // 特殊处理颜色属性，确保RGBA值正确
-                    // Cocos Creator颜色值范围是0-255
+                    // Special handling for color properties, ensure RGBA values are correct
+                    // Cocos Creator color value range is 0-255
                     const colorValue = {
                         r: Math.min(255, Math.max(0, Number(processedValue.r) || 0)),
                         g: Math.min(255, Math.max(0, Number(processedValue.g) || 0)),
@@ -1164,7 +1219,7 @@ export class ComponentTools implements ToolExecutor {
                         }
                     });
                 } else if (propertyType === 'vec3' && processedValue && typeof processedValue === 'object') {
-                    // 特殊处理Vec3属性
+                    // Special handling for Vec3 properties
                     const vec3Value = {
                         x: Number(processedValue.x) || 0,
                         y: Number(processedValue.y) || 0,
@@ -1180,7 +1235,7 @@ export class ComponentTools implements ToolExecutor {
                         }
                     });
                 } else if (propertyType === 'vec2' && processedValue && typeof processedValue === 'object') {
-                    // 特殊处理Vec2属性
+                    // Special handling for Vec2 properties
                     const vec2Value = {
                         x: Number(processedValue.x) || 0,
                         y: Number(processedValue.y) || 0
@@ -1195,7 +1250,7 @@ export class ComponentTools implements ToolExecutor {
                         }
                     });
                 } else if (propertyType === 'size' && processedValue && typeof processedValue === 'object') {
-                    // 特殊处理Size属性
+                    // Special handling for Size properties
                     const sizeValue = {
                         width: Number(processedValue.width) || 0,
                         height: Number(processedValue.height) || 0
@@ -1210,7 +1265,7 @@ export class ComponentTools implements ToolExecutor {
                         }
                     });
                 } else if (propertyType === 'node' && processedValue && typeof processedValue === 'object' && 'uuid' in processedValue) {
-                    // 特殊处理节点引用
+                    // Special handling for node references
                     console.log(`[ComponentTools] Setting node reference with UUID: ${processedValue.uuid}`);
                     await Editor.Message.request('scene', 'set-property', {
                         uuid: nodeUuid,
@@ -1221,28 +1276,28 @@ export class ComponentTools implements ToolExecutor {
                         }
                     });
                 } else if (propertyType === 'component' && typeof processedValue === 'string') {
-                    // 特殊处理组件引用：通过节点UUID找到组件的__id__
+                    // Special handling for component references: find component __id__ via node UUID
                     const targetNodeUuid = processedValue;
                     console.log(`[ComponentTools] Setting component reference - finding component on node: ${targetNodeUuid}`);
                     
-                    // 从当前组件的属性元数据中获取期望的组件类型
+                    // Get expected component type from current component's property metadata
                     let expectedComponentType = '';
                     
-                    // 获取当前组件的详细信息，包括属性元数据
+                    // Get detailed info of current component, including property metadata
                     const currentComponentInfo = await this.getComponentInfo(nodeUuid, componentType);
                     if (currentComponentInfo.success && currentComponentInfo.data?.properties?.[property]) {
                         const propertyMeta = currentComponentInfo.data.properties[property];
                         
-                        // 从属性元数据中提取组件类型信息
+                        // Extract component type info from property metadata
                         if (propertyMeta && typeof propertyMeta === 'object') {
-                            // 检查是否有type字段指示组件类型
+                            // Check if there is a type field indicating component type
                             if (propertyMeta.type) {
                                 expectedComponentType = propertyMeta.type;
                             } else if (propertyMeta.ctor) {
-                                // 有些属性可能使用ctor字段
+                                // Some properties may use ctor field
                                 expectedComponentType = propertyMeta.ctor;
                             } else if (propertyMeta.extends && Array.isArray(propertyMeta.extends)) {
-                                // 检查extends数组，通常第一个是最具体的类型
+                                // Check extends array, usually the first one is the most specific type
                                 for (const extendType of propertyMeta.extends) {
                                     if (extendType.startsWith('cc.') && extendType !== 'cc.Component' && extendType !== 'cc.Object') {
                                         expectedComponentType = extendType;
@@ -1260,25 +1315,25 @@ export class ComponentTools implements ToolExecutor {
                     console.log(`[ComponentTools] Detected required component type: ${expectedComponentType} for property: ${property}`);
                     
                     try {
-                        // 获取目标节点的组件信息
+                        // Get component info of target node
                         const targetNodeData = await Editor.Message.request('scene', 'query-node', targetNodeUuid);
                         if (!targetNodeData || !targetNodeData.__comps__) {
                             throw new Error(`Target node ${targetNodeUuid} not found or has no components`);
                         }
                         
-                        // 打印目标节点的组件概览
+                        // Print component overview of target node
                         console.log(`[ComponentTools] Target node ${targetNodeUuid} has ${targetNodeData.__comps__.length} components:`);
                         targetNodeData.__comps__.forEach((comp: any, index: number) => {
                             const sceneId = comp.value && comp.value.uuid && comp.value.uuid.value ? comp.value.uuid.value : 'unknown';
                             console.log(`[ComponentTools] Component ${index}: ${comp.type} (scene_id: ${sceneId})`);
                         });
                         
-                        // 查找对应的组件
+                        // Find matching component
                         let targetComponent = null;
                         let componentId: string | null = null;
                         
-                        // 在目标节点的_components数组中查找指定类型的组件
-                        // 注意：__comps__和_components的索引是对应的
+                        // Find component of specified type in target node's _components array
+                        // Note: indices in __comps__ and _components correspond to each other
                         console.log(`[ComponentTools] Searching for component type: ${expectedComponentType}`);
                         
                         for (let i = 0; i < targetNodeData.__comps__.length; i++) {
@@ -1289,7 +1344,7 @@ export class ComponentTools implements ToolExecutor {
                                 targetComponent = comp;
                                 console.log(`[ComponentTools] Found matching component at index ${i}: ${comp.type}`);
                                 
-                                // 从组件的value.uuid.value中获取组件在场景中的ID
+                                // Get component ID in scene from component's value.uuid.value
                                 if (comp.value && comp.value.uuid && comp.value.uuid.value) {
                                     componentId = comp.value.uuid.value;
                                     console.log(`[ComponentTools] Got componentId from comp.value.uuid.value: ${componentId}`);
@@ -1308,10 +1363,10 @@ export class ComponentTools implements ToolExecutor {
                         }
                         
                         if (!targetComponent) {
-                            // 如果没找到，列出可用组件让用户了解，显示场景中的真实ID
+                            // If not found, list available components for user reference, showing real scene IDs
                             const availableComponents = targetNodeData.__comps__.map((comp: any, index: number) => {
                                 let sceneId = 'unknown';
-                                // 从组件的value.uuid.value获取场景ID
+                                // Get scene ID from component's value.uuid.value
                                 if (comp.value && comp.value.uuid && comp.value.uuid.value) {
                                     sceneId = comp.value.uuid.value;
                                 }
@@ -1322,18 +1377,18 @@ export class ComponentTools implements ToolExecutor {
                         
                         console.log(`[ComponentTools] Found component ${expectedComponentType} with scene ID: ${componentId} on node ${targetNodeUuid}`);
                         
-                        // 更新期望值为实际的组件ID对象格式，用于后续验证
+                        // Update expected value to actual component ID object format for subsequent verification
                         if (componentId) {
                             actualExpectedValue = { uuid: componentId };
                         }
                         
-                        // 尝试使用与节点/资源引用相同的格式：{uuid: componentId}
-                        // 测试看是否能正确设置组件引用
+                        // Try using same format as node/asset references: {uuid: componentId}
+                        // Test whether component reference can be set correctly
                         await Editor.Message.request('scene', 'set-property', {
                             uuid: nodeUuid,
                             path: propertyPath,
                             dump: { 
-                                value: { uuid: componentId },  // 使用对象格式，像节点/资源引用一样
+                                value: { uuid: componentId },  // Use object format, like node/asset references
                                 type: expectedComponentType
                             }
                         });
@@ -1343,18 +1398,18 @@ export class ComponentTools implements ToolExecutor {
                         throw error;
                     }
                 } else if (propertyType === 'nodeArray' && Array.isArray(processedValue)) {
-                    // 特殊处理节点数组 - 保持预处理的格式
+                    // Special handling for node arrays - preserve preprocessed format
                     console.log(`[ComponentTools] Setting node array:`, processedValue);
                     
                     await Editor.Message.request('scene', 'set-property', {
                         uuid: nodeUuid,
                         path: propertyPath,
                         dump: { 
-                            value: processedValue  // 保持 [{uuid: "..."}, {uuid: "..."}] 格式
+                            value: processedValue  // Preserve [{uuid: "..."}, {uuid: "..."}] format
                         }
                     });
                 } else if (propertyType === 'colorArray' && Array.isArray(processedValue)) {
-                    // 特殊处理颜色数组
+                    // Special handling for color arrays
                     const colorArrayValue = processedValue.map((item: any) => {
                         if (item && typeof item === 'object' && 'r' in item) {
                             return {
@@ -1385,8 +1440,8 @@ export class ComponentTools implements ToolExecutor {
                     });
                 }
                 
-                // Step 5: 等待Editor完成更新，然后验证设置结果
-                await new Promise(r => setTimeout(r, 200)); // 等待200ms让Editor完成更新
+                // Step 5: Wait for Editor to complete update, then verify setting result
+                await new Promise(r => setTimeout(r, 200)); // Wait 200ms for Editor to complete update
 
                 const verification = await this.verifyPropertyChange(nodeUuid, componentType, property, originalValue, actualExpectedValue);
 
@@ -1445,7 +1500,7 @@ export class ComponentTools implements ToolExecutor {
     }
 
     private isValidPropertyDescriptor(propData: any): boolean {
-        // 检查是否是有效的属性描述对象
+        // Check if it is a valid property descriptor object
         if (typeof propData !== 'object' || propData === null) {
             return false;
         }
@@ -1453,7 +1508,7 @@ export class ComponentTools implements ToolExecutor {
         try {
             const keys = Object.keys(propData);
             
-            // 避免遍历简单的数值对象（如 {width: 200, height: 150}）
+            // Avoid traversing simple numeric/primitive objects (e.g. {width: 200, height: 150})
             const isSimpleValueObject = keys.every(key => {
                 const value = propData[key];
                 return typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean';
@@ -1463,21 +1518,21 @@ export class ComponentTools implements ToolExecutor {
                 return false;
             }
             
-            // 检查是否包含属性描述符的特征字段，不使用'in'操作符
+            // Check whether it contains characteristic fields of property descriptor, without using 'in' operator
             const hasName = keys.includes('name');
             const hasValue = keys.includes('value');
             const hasType = keys.includes('type');
             const hasDisplayName = keys.includes('displayName');
             const hasReadonly = keys.includes('readonly');
             
-            // 必须包含name或value字段，且通常还有type字段
+            // Must contain name or value field, and usually type field as well
             const hasValidStructure = (hasName || hasValue) && (hasType || hasDisplayName || hasReadonly);
             
-            // 额外检查：如果有default字段且结构复杂，避免深度遍历
+            // Extra check: if default field exists and has complex structure, avoid deep traversal
             if (keys.includes('default') && propData.default && typeof propData.default === 'object') {
                 const defaultKeys = Object.keys(propData.default);
                 if (defaultKeys.includes('value') && typeof propData.default.value === 'object') {
-                    // 这种情况下，我们只返回顶层属性，不深入遍历default.value
+                    // In this case, only return top-level properties, do not deeply traverse default.value
                     return hasValidStructure;
                 }
             }
@@ -1490,36 +1545,36 @@ export class ComponentTools implements ToolExecutor {
     }
 
     private analyzeProperty(component: any, propertyName: string): { exists: boolean; type: string; availableProperties: string[]; originalValue: any } {
-        // 从复杂的组件结构中提取可用属性
+        // Extract available properties from complex component structure
         const availableProperties: string[] = [];
         let propertyValue: any = undefined;
         let propertyExists = false;
         
-        // 尝试多种方式查找属性：
-        // 1. 直接属性访问
+        // Try multiple ways to look up properties:
+        // 1. Direct property access
         if (Object.prototype.hasOwnProperty.call(component, propertyName)) {
             propertyValue = component[propertyName];
             propertyExists = true;
         }
         
-        // 2. 从嵌套结构中查找 (如从测试数据看到的复杂结构)
+        // 2. Look up from nested structure (such as complex structures seen in test data)
         if (!propertyExists && component.properties && typeof component.properties === 'object') {
-            // 首先检查properties.value是否存在（这是我们在getComponents中看到的结构）
+            // First check if properties.value exists (this is the structure seen in getComponents)
             if (component.properties.value && typeof component.properties.value === 'object') {
                 const valueObj = component.properties.value;
                 for (const [key, propData] of Object.entries(valueObj)) {
-                    // 检查propData是否是一个有效的属性描述对象
-                    // 确保propData是对象且包含预期的属性结构
+                    // Check if propData is a valid property descriptor object
+                    // Ensure propData is an object and contains expected property structure
                     if (this.isValidPropertyDescriptor(propData)) {
                         const propInfo = propData as any;
                         availableProperties.push(key);
                         if (key === propertyName) {
-                            // 优先使用value属性，如果没有则使用propData本身
+                            // Prioritize value property; if not present, use propData itself
                             try {
                                 const propKeys = Object.keys(propInfo);
                                 propertyValue = propKeys.includes('value') ? propInfo.value : propInfo;
                             } catch (error) {
-                                // 如果检查失败，直接使用propInfo
+                                // If check fails, use propInfo directly
                                 propertyValue = propInfo;
                             }
                             propertyExists = true;
@@ -1527,18 +1582,18 @@ export class ComponentTools implements ToolExecutor {
                     }
                 }
             } else {
-                // 备用方案：直接从properties查找
+                // Fallback: look up directly from properties
                 for (const [key, propData] of Object.entries(component.properties)) {
                     if (this.isValidPropertyDescriptor(propData)) {
                         const propInfo = propData as any;
                         availableProperties.push(key);
                         if (key === propertyName) {
-                            // 优先使用value属性，如果没有则使用propData本身
+                            // Prioritize value property; if not present, use propData itself
                             try {
                                 const propKeys = Object.keys(propInfo);
                                 propertyValue = propKeys.includes('value') ? propInfo.value : propInfo;
                             } catch (error) {
-                                // 如果检查失败，直接使用propInfo
+                                // If check fails, use propInfo directly
                                 propertyValue = propInfo;
                             }
                             propertyExists = true;
@@ -1548,7 +1603,7 @@ export class ComponentTools implements ToolExecutor {
             }
         }
         
-        // 3. 从直接属性中提取简单属性名
+        // 3. Extract simple property names from direct properties
         if (availableProperties.length === 0) {
             for (const key of Object.keys(component)) {
                 if (!key.startsWith('_') && !['__type__', 'cid', 'node', 'uuid', 'name', 'enabled', 'type', 'readonly', 'visible'].includes(key)) {
@@ -1568,9 +1623,9 @@ export class ComponentTools implements ToolExecutor {
         
         let type = 'unknown';
         
-        // 智能类型检测
+        // Smart type detection
         if (Array.isArray(propertyValue)) {
-            // 数组类型检测
+            // Array type detection
             if (propertyName.toLowerCase().includes('node')) {
                 type = 'nodeArray';
             } else if (propertyName.toLowerCase().includes('color')) {
@@ -1599,7 +1654,7 @@ export class ComponentTools implements ToolExecutor {
                 } else if (keys.includes('width') && keys.includes('height')) {
                     type = 'size';
                 } else if (keys.includes('uuid') || keys.includes('__uuid__')) {
-                    // 检查是否是节点引用（通过属性名或__id__属性判断）
+                    // Check if it is a node reference (determined by property name or __id__ property)
                     if (propertyName.toLowerCase().includes('node') || 
                         propertyName.toLowerCase().includes('target') ||
                         keys.includes('__id__')) {
@@ -1608,7 +1663,7 @@ export class ComponentTools implements ToolExecutor {
                         type = 'asset';
                     }
                 } else if (keys.includes('__id__')) {
-                    // 节点引用特征
+                    // Node reference characteristic
                     type = 'node';
                 } else {
                     type = 'object';
@@ -1640,34 +1695,34 @@ export class ComponentTools implements ToolExecutor {
     }
 
     /**
-     * 自动检测属性类型
+     * Automatically detect property type
      */
     private autoDetectPropertyType(propertyName: string, value: any, originalValue: any, detectedType: string): string {
-        // 1. 基于属性名称的启发式检测
+        // 1. Heuristic detection based on property name
         const nameLower = propertyName.toLowerCase();
         
-        // 资源类型检测
+        // Asset type detection
         if (nameLower.includes('prefab')) return 'prefab';
         if (nameLower.includes('spriteframe') || nameLower.includes('sprite_frame')) return 'spriteFrame';
         if (nameLower.includes('material')) return 'asset';
         if (nameLower.includes('texture') || nameLower.includes('font') || nameLower.includes('clip')) return 'asset';
         
-        // 节点引用检测
+        // Node reference detection
         if (nameLower.includes('node') || nameLower.includes('target') || nameLower.includes('player') || 
             nameLower.includes('enemy') || nameLower.includes('bullet') || nameLower.includes('ui') ||
             nameLower.includes('layer') || nameLower.includes('canvas')) return 'node';
         
-        // 组件引用检测
+        // Component reference detection
         if (nameLower.includes('component')) return 'component';
         
-        // 2. 基于值类型的检测
+        // 2. Value type based detection
         if (typeof value === 'string') {
-            // UUID格式检测
+            // UUID format detection
             if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
-                // 长UUID通常是资源引用
+                // Long UUID is usually an asset reference
                 return 'asset';
             }
-            // 十六进制颜色检测
+            // Hexadecimal color detection
             if (/^#[0-9a-f]{6}$/i.test(value)) {
                 return 'color';
             }
@@ -1677,21 +1732,21 @@ export class ComponentTools implements ToolExecutor {
         if (typeof value === 'number') return 'number';
         if (typeof value === 'boolean') return 'boolean';
         
-        // 对象类型检测
+        // Object type detection
         if (typeof value === 'object' && value !== null) {
-            // 颜色对象检测
+            // Color object detection
             if ('r' in value && 'g' in value && 'b' in value) return 'color';
-            // Vec2检测
+            // Vec2 detection
             if ('x' in value && 'y' in value && !('z' in value)) return 'vec2';
-            // Vec3检测
+            // Vec3 detection
             if ('x' in value && 'y' in value && 'z' in value) return 'vec3';
-            // Size检测
+            // Size detection
             if ('width' in value && 'height' in value) return 'size';
-            // UUID对象检测（资源引用）
+            // UUID object detection (asset reference)
             if ('uuid' in value) return 'asset';
         }
         
-        // 数组类型检测
+        // Array type detection
         if (Array.isArray(value)) {
             if (value.length > 0) {
                 const firstItem = value[0];
@@ -1702,10 +1757,10 @@ export class ComponentTools implements ToolExecutor {
                     if ('uuid' in firstItem) return 'nodeArray';
                 }
             }
-            return 'stringArray'; // 默认字符串数组
+            return 'stringArray'; // Default string array
         }
         
-        // 3. 基于原始值的回退检测
+        // 3. Fallback detection based on original value
         if (originalValue !== undefined && originalValue !== null) {
             if (typeof originalValue === 'object' && 'r' in originalValue) return 'color';
             if (typeof originalValue === 'object' && 'x' in originalValue && 'y' in originalValue) {
@@ -1714,10 +1769,10 @@ export class ComponentTools implements ToolExecutor {
             if (typeof originalValue === 'object' && 'width' in originalValue) return 'size';
         }
         
-        // 4. 使用检测到的类型作为回退
+        // 4. Use detected type as fallback
         if (detectedType && detectedType !== 'unknown') return detectedType;
         
-        // 5. 最终回退到基本类型
+        // 5. Final fallback to primitive type
         return 'string';
     }
 
@@ -1741,14 +1796,14 @@ export class ComponentTools implements ToolExecutor {
                 return Boolean(inputValue);
                 
             case 'color':
-                // 优化的颜色处理，支持多种输入格式
+                // Optimized color handling, supports multiple input formats
                 if (typeof inputValue === 'string') {
-                    // 字符串格式：十六进制、颜色名称、rgb()/rgba()
+                    // String format: hexadecimal, color name, rgb()/rgba()
                     return this.parseColorString(inputValue);
                 } else if (typeof inputValue === 'object' && inputValue !== null) {
                     try {
                         const inputKeys = Object.keys(inputValue);
-                        // 如果输入是颜色对象，验证并转换
+                        // If input is color object, validate and convert
                         if (inputKeys.includes('r') || inputKeys.includes('g') || inputKeys.includes('b')) {
                             return {
                                 r: Math.min(255, Math.max(0, Number(inputValue.r) || 0)),
@@ -1761,7 +1816,7 @@ export class ComponentTools implements ToolExecutor {
                         console.warn(`[smartConvertValue] Invalid color object: ${JSON.stringify(inputValue)}`);
                     }
                 }
-                // 如果有原值，保持原值结构并更新提供的值
+                // If original value exists, preserve structure and update provided values
                 if (originalValue && typeof originalValue === 'object') {
                     try {
                         const inputKeys = typeof inputValue === 'object' && inputValue ? Object.keys(inputValue) : [];
@@ -1775,7 +1830,7 @@ export class ComponentTools implements ToolExecutor {
                         console.warn(`[smartConvertValue] Error processing color with original value: ${error}`);
                     }
                 }
-                // 默认返回白色
+                // Return white by default
                 console.warn(`[smartConvertValue] Using default white color for invalid input: ${JSON.stringify(inputValue)}`);
                 return { r: 255, g: 255, b: 255, a: 255 };
                 
@@ -1809,17 +1864,17 @@ export class ComponentTools implements ToolExecutor {
                 
             case 'node':
                 if (typeof inputValue === 'string') {
-                    // 节点引用需要特殊处理
+                    // Node reference requires special handling
                     return inputValue;
                 } else if (typeof inputValue === 'object' && inputValue !== null) {
-                    // 如果已经是对象形式，返回UUID或完整对象
+                    // If already in object form, return UUID or full object
                     return inputValue.uuid || inputValue;
                 }
                 return originalValue;
                 
             case 'asset':
                 if (typeof inputValue === 'string') {
-                    // 如果输入是字符串路径，转换为asset对象
+                    // If input is string path, convert to asset object
                     return { uuid: inputValue };
                 } else if (typeof inputValue === 'object' && inputValue !== null) {
                     return inputValue;
@@ -1827,7 +1882,7 @@ export class ComponentTools implements ToolExecutor {
                 return originalValue;
                 
             default:
-                // 对于未知类型，尽量保持原有结构
+                // For unknown types, preserve original structure as much as possible
                 if (typeof inputValue === typeof originalValue) {
                     return inputValue;
                 }
@@ -1838,7 +1893,7 @@ export class ComponentTools implements ToolExecutor {
         private parseColorString(colorStr: string): { r: number; g: number; b: number; a: number } {
         const str = colorStr.trim();
         
-        // 只支持十六进制格式 #RRGGBB 或 #RRGGBBAA
+        // Only hexadecimal format #RRGGBB or #RRGGBBAA is supported
         if (str.startsWith('#')) {
             if (str.length === 7) { // #RRGGBB
                 const r = parseInt(str.substring(1, 3), 16);
@@ -1854,7 +1909,7 @@ export class ComponentTools implements ToolExecutor {
             }
         }
         
-        // 如果不是有效的十六进制格式，返回错误提示
+        // If not valid hexadecimal format, return error prompt
         throw new Error(`Invalid color format: "${colorStr}". Only hexadecimal format is supported (e.g., "#FF0000" or "#FF0000FF")`);
     }
 
@@ -1864,7 +1919,7 @@ export class ComponentTools implements ToolExecutor {
         console.log(`[verifyPropertyChange] Original value:`, JSON.stringify(originalValue));
         
         try {
-            // 重新获取组件信息进行验证
+            // Re-fetch component info for verification
             console.log(`[verifyPropertyChange] Calling getComponentInfo...`);
             const componentInfo = await this.getComponentInfo(nodeUuid, componentType);
             console.log(`[verifyPropertyChange] getComponentInfo success:`, componentInfo.success);
@@ -1879,7 +1934,7 @@ export class ComponentTools implements ToolExecutor {
                 const propertyData = componentInfo.data.properties?.[property];
                 console.log(`[verifyPropertyChange] Raw property data for '${property}':`, JSON.stringify(propertyData));
                 
-                // 从属性数据中提取实际值
+                // Extract actual value from property data
                 let actualValue = propertyData;
                 console.log(`[verifyPropertyChange] Initial actualValue:`, JSON.stringify(actualValue));
                 
@@ -1890,11 +1945,11 @@ export class ComponentTools implements ToolExecutor {
                     console.log(`[verifyPropertyChange] No .value property found, using raw data`);
                 }
                 
-                // 修复验证逻辑：检查实际值是否匹配期望值
+                // Fixed verification logic: check whether actual value matches expected value
                 let verified = false;
                 
                 if (typeof expectedValue === 'object' && expectedValue !== null && 'uuid' in expectedValue) {
-                    // 对于引用类型（节点/组件/资源），比较UUID
+                    // For reference types (node/component/asset), compare UUID
                     const actualUuid = actualValue && typeof actualValue === 'object' && 'uuid' in actualValue ? actualValue.uuid : '';
                     const expectedUuid = expectedValue.uuid || '';
                     verified = actualUuid === expectedUuid && expectedUuid !== '';
@@ -1906,23 +1961,23 @@ export class ComponentTools implements ToolExecutor {
                     console.log(`  - UUID not empty: ${expectedUuid !== ''}`);
                     console.log(`  - Final verified: ${verified}`);
                 } else {
-                    // 对于其他类型，直接比较值
+                    // For other types, compare values directly
                     console.log(`[verifyPropertyChange] Value comparison:`);
                     console.log(`  - Expected type: ${typeof expectedValue}`);
                     console.log(`  - Actual type: ${typeof actualValue}`);
                     
                     if (typeof actualValue === typeof expectedValue) {
                         if (typeof actualValue === 'object' && actualValue !== null && expectedValue !== null) {
-                            // 对象类型的深度比较
+                            // Deep comparison for object types
                             verified = JSON.stringify(actualValue) === JSON.stringify(expectedValue);
                             console.log(`  - Object comparison (JSON): ${verified}`);
                         } else {
-                            // 基本类型的直接比较
+                            // Direct comparison for primitive types
                             verified = actualValue === expectedValue;
                             console.log(`  - Direct comparison: ${verified}`);
                         }
                     } else {
-                        // 类型不匹配时的特殊处理（如数字和字符串）
+                        // Special handling when types mismatch (such as number and string)
                         const stringMatch = String(actualValue) === String(expectedValue);
                         const numberMatch = Number(actualValue) === Number(expectedValue);
                         verified = stringMatch || numberMatch;
@@ -1939,16 +1994,16 @@ export class ComponentTools implements ToolExecutor {
                     verified,
                     actualValue,
                     fullData: {
-                        // 只返回修改的属性信息，不返回完整组件数据
+                        // Only return modified property info, not full component data
                         modifiedProperty: {
                             name: property,
                             before: originalValue,
                             expected: expectedValue,
                             actual: actualValue,
                             verified,
-                            propertyMetadata: propertyData // 只包含这个属性的元数据
+                            propertyMetadata: propertyData // Only contains metadata for this property
                         },
-                        // 简化的组件信息
+                        // Simplified component info
                         componentSummary: {
                             nodeUuid,
                             componentType,
@@ -1976,17 +2031,17 @@ export class ComponentTools implements ToolExecutor {
     }
 
     /**
-     * 检测是否为节点属性，如果是则重定向到对应的节点方法
+     * Detect whether it is a node property, redirect to corresponding node method if so
      */
     private async checkAndRedirectNodeProperties(args: any): Promise<ToolResponse | null> {
         const { nodeUuid, componentType, property, propertyType, value } = args;
         
-        // 检测是否为节点基础属性（应该使用 set_node_property）
+        // Detect whether it is a node basic property (should use set_node_property)
         const nodeBasicProperties = [
             'name', 'active', 'layer', 'mobility', 'parent', 'children', 'hideFlags'
         ];
         
-        // 检测是否为节点变换属性（应该使用 set_node_transform）
+        // Detect whether it is a node transform property (should use set_node_transform)
         const nodeTransformProperties = [
             'position', 'rotation', 'scale', 'eulerAngles', 'angle'
         ];
@@ -2018,14 +2073,14 @@ export class ComponentTools implements ToolExecutor {
               };
           }
           
-          return null; // 不是节点属性，继续正常处理
+          return null; // Not a node property, proceed with normal processing
       }
 
       /**
-       * 生成组件建议信息
+       * Generate component suggestion info
        */
       private generateComponentSuggestion(requestedType: string, availableTypes: string[], property: string): string {
-          // 检查是否存在相似的组件类型
+          // Check if similar component types exist
           const similarTypes = availableTypes.filter(type => 
               type.toLowerCase().includes(requestedType.toLowerCase()) || 
               requestedType.toLowerCase().includes(type.toLowerCase())
@@ -2069,7 +2124,7 @@ export class ComponentTools implements ToolExecutor {
     }
 
     /**
-     * 快速验证资源设置结果
+     * Quickly verify asset setting result
      */
     private async quickVerifyAsset(nodeUuid: string, componentType: string, property: string): Promise<any> {
         try {
@@ -2078,7 +2133,7 @@ export class ComponentTools implements ToolExecutor {
                 return null;
             }
             
-            // 找到组件
+            // Find component
             const component = rawNodeData.__comps__.find((comp: any) => {
                 const compType = comp.__type__ || comp.cid || comp.type;
                 return compType === componentType;
@@ -2088,7 +2143,7 @@ export class ComponentTools implements ToolExecutor {
                 return null;
             }
             
-            // 提取属性值
+            // Extract property value
             const properties = this.extractComponentProperties(component);
             const propertyData = properties[property];
             
@@ -2104,13 +2159,13 @@ export class ComponentTools implements ToolExecutor {
     }
 
     /**
-     * 配置按钮点击事件 - 统一接口支持添加、移除和清空操作
+     * Configure button click events - unified interface supporting add, remove, and clear operations
      */
     private async configureClickEvent(args: any): Promise<ToolResponse> {
         try {
             const { nodeUuid, operation = 'add', targetNodeUuid, componentName, handlerName, customEventData, eventIndex } = args;
 
-            // 重新获取最新的组件状态，确保数据同步
+            // Re-fetch latest component state to ensure data synchronization
             const refreshedComponents = await this.getComponents(nodeUuid);
             if (!refreshedComponents.success || !refreshedComponents.data?.components) {
                 return { success: false, error: 'Button node not found or has no components' };
@@ -2121,7 +2176,7 @@ export class ComponentTools implements ToolExecutor {
                 return { success: false, error: 'Node does not have a Button component' };
             }
 
-            // 获取当前的clickEvents数组，确保使用最新数据
+            // Get current clickEvents array to ensure using latest data
             let currentClickEvents: any[] = [];
             if (buttonComponent.properties.clickEvents && buttonComponent.properties.clickEvents.value) {
                 currentClickEvents = Array.isArray(buttonComponent.properties.clickEvents.value)
@@ -2137,7 +2192,7 @@ export class ComponentTools implements ToolExecutor {
 
             switch (operation) {
                 case 'modify':
-                    // 修改现有事件
+                    // Modify existing event
                     if (eventIndex === undefined || eventIndex < 0 || eventIndex >= currentClickEvents.length) {
                         return {
                             success: false,
@@ -2145,18 +2200,18 @@ export class ComponentTools implements ToolExecutor {
                         };
                     }
 
-                    // 根据编辑器的行为优化：深拷贝事件数据以避免直接修改引用
+                    // Optimize based on editor behavior: deep copy event data to avoid directly mutating reference
                     updatedClickEvents = [...currentClickEvents];
-                    // 深拷贝要修改的事件，避免修改原始数据
+                    // Deep copy event to modify, avoiding modifying original data
                     const existingEvent = JSON.parse(JSON.stringify(currentClickEvents[eventIndex]));
 
-                    // 如果要修改目标节点或组件，需要完整验证
+                    // If target node or component needs to be modified, full verification is required
                     if (targetNodeUuid !== undefined || componentName !== undefined) {
-                        // 确定要验证的节点和组件
+                        // Determine node and component to verify
                         const nodeToVerify = targetNodeUuid || existingEvent.value.target.value.uuid;
                         const compToVerify = componentName || existingEvent.value._componentId.value;
 
-                        // 1. 首先验证节点是否存在
+                        // 1. First verify if node exists
                         if (targetNodeUuid !== undefined) {
                             const verifyNodeComponents = await this.getComponents(targetNodeUuid);
                             if (!verifyNodeComponents.success || !verifyNodeComponents.data?.components) {
@@ -2166,7 +2221,7 @@ export class ComponentTools implements ToolExecutor {
                                 };
                             }
 
-                            // 2. 如果同时要修改组件，验证组件是否存在
+                            // 2. If modifying component as well, verify if component exists
                             if (componentName !== undefined) {
                                 const verifyTargetComponent = verifyNodeComponents.data.components.find((comp: any) =>
                                     comp.type === componentName ||
@@ -2182,7 +2237,7 @@ export class ComponentTools implements ToolExecutor {
                             }
                         }
 
-                        // 3. 验证 handler 方法是否存在
+                        // 3. Verify if handler method exists
                         if (handlerName !== undefined && nodeToVerify && compToVerify) {
                             try {
                                 console.log(`Verifying handler '${handlerName}' on node ${nodeToVerify}, component ${compToVerify}`);
@@ -2213,16 +2268,16 @@ export class ComponentTools implements ToolExecutor {
 
                                 if (!handlerFound) {
                                     console.warn(`Handler '${handlerName}' not found in component '${compToVerify}' on node ${nodeToVerify}. This might be a custom method.`);
-                                    // 不阻止操作，因为可能是自定义方法
+                                    // Do not block operation, as it might be a custom method
                                 }
                             } catch (err) {
                                 console.error('Failed to verify handler for modify operation:', err);
-                                // 查询失败不应该阻止操作
+                                // Query failure should not block operation
                             }
                         }
                     }
 
-                    // 更新指定的属性
+                    // Update specified properties
                     if (targetNodeUuid !== undefined) {
                         existingEvent.value.target.value.uuid = targetNodeUuid;
                     }
@@ -2236,13 +2291,13 @@ export class ComponentTools implements ToolExecutor {
                         existingEvent.value.customEventData.value = customEventData;
                     }
 
-                    // 将修改后的事件放回数组
+                    // Put modified event back into array
                     updatedClickEvents[eventIndex] = existingEvent;
                     message = `Click event at index ${eventIndex} modified successfully`;
                     break;
 
                 case 'add':
-                    // 验证目标节点和组件是否存在
+                    // Verify whether target node and component exist
                     const targetComponents = await this.getComponents(targetNodeUuid);
                     if (!targetComponents.success || !targetComponents.data?.components) {
                         return { success: false, error: 'Target node not found or has no components' };
@@ -2260,20 +2315,20 @@ export class ComponentTools implements ToolExecutor {
                         };
                     }
 
-                    // 验证 handler 方法是否存在于目标组件中
+                    // Verify whether handler method exists in target component
                     if (handlerName) {
                         try {
                             console.log(`Querying component functions for node: ${targetNodeUuid}`);
                             const componentFunctions = await Editor.Message.request('scene', 'query-component-function-of-node', targetNodeUuid);
                             console.log('Component functions result:', componentFunctions);
 
-                            // 检查返回的函数列表中是否包含指定的 handler
+                            // Check if returned function list contains specified handler
                             let handlerFound = false;
                             if (componentFunctions && Array.isArray(componentFunctions)) {
-                                // 遍历所有组件的函数
+                                // Traverse functions of all components
                                 for (const compFuncs of componentFunctions) {
                                     if (compFuncs.component === componentName || compFuncs.name === componentName) {
-                                        // 检查该组件的函数列表
+                                        // Check function list of this component
                                         if (compFuncs.functions && Array.isArray(compFuncs.functions)) {
                                             handlerFound = compFuncs.functions.some((func: any) =>
                                                 func === handlerName ||
@@ -2284,7 +2339,7 @@ export class ComponentTools implements ToolExecutor {
                                     }
                                 }
                             } else if (componentFunctions && typeof componentFunctions === 'object') {
-                                // 可能返回的是对象格式
+                                // May return object format
                                 if (componentFunctions[componentName]) {
                                     const funcs = componentFunctions[componentName];
                                     if (Array.isArray(funcs)) {
@@ -2297,17 +2352,17 @@ export class ComponentTools implements ToolExecutor {
 
                             if (!handlerFound) {
                                 console.warn(`Handler '${handlerName}' not found in component '${componentName}' functions. This might be a custom method or the query failed.`);
-                                // 不要直接失败，因为可能是自定义方法或查询失败
-                                // 只是记录警告，让操作继续
+                                // Do not fail directly, as it might be a custom method or query failure
+                                // Just log a warning and let operation continue
                             }
                         } catch (err) {
                             console.error('Failed to query component functions:', err);
-                            // 查询失败不应该阻止操作，只记录错误
+                            // Query failure should not block operation, just log error
                         }
                     }
 
-                    // 构建符合Cocos Creator编辑器格式的点击事件配置
-                    // 基于实际事件结构分析，使用完整的嵌套格式
+                    // Build click event configuration conforming to Cocos Creator editor format
+                    // Based on actual event structure analysis, use complete nested format
                     const clickEventData = {
                         value: {
                             target: {
@@ -2471,8 +2526,8 @@ export class ComponentTools implements ToolExecutor {
                     return { success: false, error: `Unknown operation: ${operation}` };
             }
 
-            // 使用Editor的set-property消息设置clickEvents
-            // 找到Button组件在组件数组中的索引位置
+            // Use Editor's set-property message to set clickEvents
+            // Find index of Button component in components array
             const buttonIndex = refreshedComponents.data.components.findIndex((comp: any) => comp.type === 'cc.Button');
 
             if (buttonIndex === -1) {
@@ -2482,7 +2537,7 @@ export class ComponentTools implements ToolExecutor {
             console.log(`Setting clickEvents for Button at index ${buttonIndex}, operation: ${operation}`);
             console.log(`Previous event count: ${previousEventCount}, New event count: ${updatedClickEvents.length}`);
 
-            // 使用正确的编辑器API格式，根据引擎源码分析的结果
+            // Use correct editor API format, based on engine source code analysis results
             try {
                 const result = await Editor.Message.request('scene', 'set-property', {
                     uuid: nodeUuid,
@@ -2495,10 +2550,10 @@ export class ComponentTools implements ToolExecutor {
                 });
                 console.log('set-property result:', result);
 
-                // 等待一段时间让Editor完成更新
+                // Wait a short time for Editor to complete update
                 await new Promise(r => setTimeout(r, 300));
 
-                // 重新获取组件状态以验证修改是否成功
+                // Re-fetch component state to verify if modification succeeded
                 const verifyComponents = await this.getComponents(nodeUuid);
                 if (!verifyComponents.success || !verifyComponents.data?.components) {
                     return {
@@ -2515,7 +2570,7 @@ export class ComponentTools implements ToolExecutor {
                     };
                 }
 
-                // 获取更新后的clickEvents
+                // Get updated clickEvents
                 let verifiedClickEvents: any[] = [];
                 if (verifyButton.properties.clickEvents && verifyButton.properties.clickEvents.value) {
                     verifiedClickEvents = Array.isArray(verifyButton.properties.clickEvents.value)
@@ -2526,7 +2581,7 @@ export class ComponentTools implements ToolExecutor {
                 const verifiedEventCount = verifiedClickEvents.length;
                 console.log(`Verification - Expected event count: ${updatedClickEvents.length}, Actual event count: ${verifiedEventCount}`);
 
-                // 验证事件数量是否正确
+                // Verify if event count is correct
                 let verificationSuccess = false;
                 switch (operation) {
                     case 'add':
@@ -2540,7 +2595,7 @@ export class ComponentTools implements ToolExecutor {
                         break;
                     case 'modify':
                         verificationSuccess = verifiedEventCount === previousEventCount;
-                        // 对于修改操作，还需要验证具体的修改是否生效
+                        // For modify operation, also verify whether specific changes took effect
                         if (verificationSuccess && eventIndex !== undefined && verifiedClickEvents[eventIndex]) {
                             const modifiedEvent = verifiedClickEvents[eventIndex];
                             if (targetNodeUuid !== undefined && modifiedEvent.value.target.value.uuid !== targetNodeUuid) {
@@ -2613,10 +2668,12 @@ export class ComponentTools implements ToolExecutor {
                 return { success: false, error: 'properties object is required' };
             }
 
+            const resolvedProperties = await AssetResolver.resolvePropertiesDeep(properties);
+
             const options = {
                 name: SCENE_SCRIPT_TARGET,
                 method: 'updateComponent',
-                args: [nodeUuid, componentType, properties]
+                args: [nodeUuid, componentType, resolvedProperties]
             };
 
             const result: any = await Editor.Message.request('scene', 'execute-scene-script', options);
@@ -2654,6 +2711,95 @@ export class ComponentTools implements ToolExecutor {
             return result || { success: false, error: 'No response from scene script' };
         } catch (err: any) {
             return { success: false, error: `Failed to query class info: ${err.message}` };
+        }
+    }
+
+    private async handleSpineSetup(args: any): Promise<ToolResponse> {
+        try {
+            const {
+                nodeUuid,
+                spineAssetPath,
+                defaultAnimation,
+                loop = true,
+                componentType = 'FastSpine',
+                autoSave = true
+            } = args;
+
+            if (!nodeUuid) {
+                return { success: false, error: 'nodeUuid is required for spine_setup' };
+            }
+            if (!spineAssetPath) {
+                return { success: false, error: 'spineAssetPath is required for spine_setup' };
+            }
+
+            // 1. Resolve spine asset to UUID
+            const resolved = await AssetResolver.resolve(spineAssetPath);
+            if (!resolved || !resolved.uuid) {
+                return {
+                    success: false,
+                    error: `Could not resolve spine asset path: ${spineAssetPath}`
+                };
+            }
+            const skeletonUuid = resolved.uuid;
+
+            // 2. Check if component is already attached to node
+            const compListRes = await this.getComponents(nodeUuid);
+            const existingComps = (compListRes.success && compListRes.data && Array.isArray(compListRes.data.components))
+                ? compListRes.data.components
+                : [];
+
+            const targetType = componentType === 'sp.Skeleton' ? 'sp.Skeleton' : 'FastSpine';
+            const hasComp = existingComps.some((c: any) => c.type === targetType || c.type?.includes(targetType));
+
+            // 3. Attach component if missing
+            if (!hasComp) {
+                const addRes = await this.addComponents(nodeUuid, targetType);
+                if (!addRes.success) {
+                    return {
+                        success: false,
+                        error: `Failed to attach ${targetType} to node ${nodeUuid}: ${addRes.error}`
+                    };
+                }
+            }
+
+            // 4. Update component properties
+            const properties: Record<string, any> = {};
+            if (targetType === 'FastSpine') {
+                properties['fastSpineData'] = { __uuid__: skeletonUuid };
+            } else {
+                properties['skeletonData'] = { __uuid__: skeletonUuid };
+            }
+
+            if (defaultAnimation !== undefined && defaultAnimation !== null) {
+                properties['defaultAnimation'] = defaultAnimation;
+            }
+            properties['loop'] = loop !== false;
+
+            const updateRes = await this.updateComponent({
+                nodeUuid,
+                componentType: targetType,
+                properties,
+                autoSave
+            });
+
+            return {
+                success: updateRes.success,
+                message: updateRes.success
+                    ? `✅ Spine setup successfully configured ${targetType} on node ${nodeUuid}`
+                    : `Spine setup encountered an error updating properties: ${updateRes.error}`,
+                data: {
+                    nodeUuid,
+                    componentType: targetType,
+                    skeletonUuid,
+                    properties,
+                    updateResult: updateRes
+                }
+            };
+        } catch (err: any) {
+            return {
+                success: false,
+                error: `Spine setup error: ${err.message || err}`
+            };
         }
     }
 }

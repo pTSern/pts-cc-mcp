@@ -1,6 +1,7 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, AssetInfo } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
+import { AssetResolver } from '../utils/asset-resolver';
 
 export class AssetAdvancedTools implements ToolExecutor {
     getTools(): ToolDefinition[] {
@@ -156,8 +157,18 @@ export class AssetAdvancedTools implements ToolExecutor {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['get_info', 'get_assets', 'find_by_name', 'get_details', 'query_path', 'query_uuid', 'query_url'],
-                            description: 'Query action to perform'
+                            enum: ['get_info', 'get_assets', 'find_by_name', 'get_details', 'query_path', 'query_uuid', 'query_url', 'resolve'],
+                            description: 'Query action: "resolve" = smart resolve asset/sub-asset UUIDs and metadata from path/pattern | "get_info" = basic asset info | "find_by_name" = search | "get_details" = detailed asset info | "get_assets" = list assets'
+                        },
+                        // For resolve action
+                        pathOrPattern: {
+                            type: 'string',
+                            description: 'Asset path, pattern, or UUID to resolve (e.g. "db://assets/textures/dog.png@spriteFrame" or "Dog.prefab") (resolve action only)'
+                        },
+                        subType: {
+                            type: 'string',
+                            enum: ['raw', 'spriteFrame', 'texture'],
+                            description: 'Sub-asset resolution target (resolve action only)'
                         },
                         // For get_info action
                         assetPath: {
@@ -283,7 +294,7 @@ export class AssetAdvancedTools implements ToolExecutor {
         }
     }
 
-    // 新的整合处理函数
+    // Consolidated handler functions
     private async handleAssetManage(args: any): Promise<ToolResponse> {
         const { action } = args;
         
@@ -365,6 +376,8 @@ export class AssetAdvancedTools implements ToolExecutor {
                 return await this.queryAssetUuid(args.url);
             case 'query_url':
                 return await this.queryAssetUrl(args.uuid);
+            case 'resolve':
+                return await this.resolveAsset(args);
             default:
                 return { success: false, error: `Unknown asset query action: ${action}` };
         }
@@ -393,7 +406,7 @@ export class AssetAdvancedTools implements ToolExecutor {
         }
     }
 
-    // 原有的实现方法保持不变（从原文件复制）
+    // Original implementation methods preserved (copied from original file)
     private async saveAssetMeta(urlOrUUID: string, content: string): Promise<ToolResponse> {
         try {
             const result = await Editor.Message.request('asset-db', 'save-asset-meta', urlOrUUID, content);
@@ -589,16 +602,16 @@ export class AssetAdvancedTools implements ToolExecutor {
 
     private async exportAssetManifest(folder: string = 'db://assets', format: string = 'json', _includeMetadata: boolean = false): Promise<ToolResponse> {
         try {
-            // 获取实际的资源数据
+            // Get actual asset data
             const allAssetsResponse = await Editor.Message.request('asset-db', 'query-assets');
             const allAssets = Array.isArray(allAssetsResponse) ? allAssetsResponse : [];
             
-            // 过滤指定文件夹的资源
+            // Filter assets by specified folder
             const filteredAssets = allAssets.filter(asset => 
                 asset.path && asset.path.includes(folder)
             );
             
-            // 构建资源清单 - 只包含基础信息，不包含模拟的元数据
+            // Build asset manifest - only basic info included, no simulated metadata
             const assets = filteredAssets.map(asset => {
                 return {
                     name: asset.name,
@@ -721,22 +734,22 @@ export class AssetAdvancedTools implements ToolExecutor {
         try {
             let patterns: string[] = [];
 
-            // 决定搜索范围
+            // Determine search scope
             if (folder === 'all') {
-                // 搜索用户资源和内置资源
+                // Search user assets and internal assets
                 patterns = ['db://assets/**/*', 'db://internal/**/*'];
             } else if (folder === 'db://internal') {
-                // 只搜索内置资源
+                // Search internal assets only
                 patterns = ['db://internal/**/*'];
             } else if (folder === 'db://assets') {
-                // 只搜索用户资源
+                // Search user assets only
                 patterns = ['db://assets/**/*'];
             } else {
-                // 指定文件夹
+                // Specific folder
                 patterns = [`${folder}/**/*`];
             }
 
-            // 如果指定了类型，添加扩展名过滤
+            // Add extension filter if type is specified
             if (type !== 'all') {
                 const typeExtensions: Record<string, string> = {
                     'scene': '.scene',
@@ -759,7 +772,7 @@ export class AssetAdvancedTools implements ToolExecutor {
 
             console.log(`[DEBUG] Searching assets with patterns:`, patterns);
 
-            // 并行查询所有模式
+            // Query all patterns in parallel
             const allResults = await Promise.all(
                 patterns.map(pattern =>
                     Editor.Message.request('asset-db', 'query-assets', { pattern: pattern })
@@ -770,7 +783,7 @@ export class AssetAdvancedTools implements ToolExecutor {
                 )
             );
 
-            // 合并结果并去重
+            // Merge results and deduplicate
             const combinedResults = allResults.flat();
             const uniqueAssets = new Map();
 
@@ -790,7 +803,7 @@ export class AssetAdvancedTools implements ToolExecutor {
 
             const assets = Array.from(uniqueAssets.values());
 
-            // 按类型分组统计
+            // Group statistics by type
             const userAssets = assets.filter(a => !a.isBuiltIn);
             const builtInAssets = assets.filter(a => a.isBuiltIn);
 
@@ -1093,6 +1106,37 @@ export class AssetAdvancedTools implements ToolExecutor {
             return {
                 success: false,
                 error: `Failed to get asset details: ${error.message}`
+            };
+        }
+    }
+
+    private async resolveAsset(args: any): Promise<ToolResponse> {
+        try {
+            const target = args.pathOrPattern || args.url || args.uuid || args.assetPath || args.name;
+            if (!target) {
+                return {
+                    success: false,
+                    error: 'Target asset path, pattern, url, or uuid is required for resolve action'
+                };
+            }
+
+            const resolved = await AssetResolver.resolve(target, args.subType);
+            if (!resolved) {
+                return {
+                    success: false,
+                    error: `Could not resolve asset: ${target}`
+                };
+            }
+
+            return {
+                success: true,
+                message: `✅ Resolved asset: ${target}`,
+                data: resolved
+            };
+        } catch (err: any) {
+            return {
+                success: false,
+                error: `Failed to resolve asset: ${err.message || err}`
             };
         }
     }

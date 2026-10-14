@@ -225,7 +225,7 @@ export class SceneTools implements ToolExecutor {
 
     private async getCurrentScene(): Promise<ToolResponse> {
         try {
-            // 直接使用 query-node-tree 来获取场景信息（这个方法已经验证可用）
+            // Query scene information directly using query-node-tree (verified working)
             const tree: any = await Editor.Message.request('scene', 'query-node-tree');
             if (tree && tree.uuid) {
                 return {
@@ -242,7 +242,7 @@ export class SceneTools implements ToolExecutor {
                 return { success: false, error: 'No scene data available' };
             }
         } catch (err: any) {
-            // 备用方案：使用场景脚本
+            // Fallback: use scene script
             try {
                 const options = {
                     name: SCENE_SCRIPT_TARGET,
@@ -275,13 +275,13 @@ export class SceneTools implements ToolExecutor {
 
     private async openScene(scenePath: string): Promise<ToolResponse> {
         try {
-            // 首先获取场景的UUID
+            // Get scene UUID first
             const uuid: string | null = await Editor.Message.request('asset-db', 'query-uuid', scenePath);
             if (!uuid) {
                 return { success: false, error: 'Scene not found' };
             }
 
-            // 使用正确的 scene API 打开场景 (需要UUID)
+            // Open scene using correct scene API (requires UUID)
             await Editor.Message.request('scene', 'open-scene', uuid);
             return { success: true, message: `Scene opened: ${scenePath}` };
         } catch (err: any) {
@@ -299,10 +299,10 @@ export class SceneTools implements ToolExecutor {
     }
 
     private async createScene(sceneName: string, savePath: string): Promise<ToolResponse> {
-        // 确保路径以.scene结尾
+        // Ensure path ends with .scene
         const fullPath = savePath.endsWith('.scene') ? savePath : `${savePath}/${sceneName}.scene`;
 
-        // 使用正确的Cocos Creator 3.8场景格式
+        // Use valid Cocos Creator 3.8 scene format
         const sceneContent = JSON.stringify([
             {
                 "__type__": "cc.SceneAsset",
@@ -493,7 +493,7 @@ export class SceneTools implements ToolExecutor {
 
     private async getSceneHierarchy(includeComponents: boolean = false): Promise<ToolResponse> {
         try {
-            // 优先尝试使用 Editor API 查询场景节点树
+            // Try using Editor API to query scene node tree first
             const tree: any = await Editor.Message.request('scene', 'query-node-tree');
             if (tree) {
                 const hierarchy = this.buildHierarchy(tree, includeComponents);
@@ -505,7 +505,7 @@ export class SceneTools implements ToolExecutor {
                 return { success: false, error: 'No scene hierarchy available' };
             }
         } catch (err: any) {
-            // 备用方案：使用场景脚本
+            // Fallback: use scene script
             try {
                 const options = {
                     name: SCENE_SCRIPT_TARGET,
@@ -547,7 +547,7 @@ export class SceneTools implements ToolExecutor {
 
     private async saveSceneAs(path: string): Promise<ToolResponse> {
         try {
-            // save-as-scene API 不接受路径参数，会弹出对话框让用户选择
+            // save-as-scene API does not accept path param, will prompt user with a dialog
             await (Editor.Message.request as any)('scene', 'save-as-scene');
             return {
                 success: true,
