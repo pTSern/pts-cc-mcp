@@ -134,6 +134,24 @@ module.exports = {
     "cat_nexus": "Nexus Event Queries",
     "cat_animgraph": "Animation Graphs",
     "cat_batch": "Batch Transactions",
+    "cat_knowledge": "Knowledge & API Catalog",
+    "cat_uiBuilder": "Declarative UI Builder",
+
+    // Tool Tester Dialog
+    "tool_test": "Test",
+    "test_tool": "Test Tool",
+    "test_mode_quick": "Quick",
+    "test_mode_manual": "Manual",
+    "test_desc_quick": "Test the tool with auto-filled default parameters",
+    "test_desc_manual": "Customize parameters with component-style inspector",
+    "invoke": "Invoke",
+    "executing": "Executing...",
+    "execution_result": "Result",
+    "execution_success": "Success",
+    "execution_failed": "Failed",
+    "no_params_required": "No parameters required for this tool.",
+    "param_required": "Required parameter",
+    "back_to_quick": "Back to Quick Mode",
 
     // UI Dialogs & Operations
     "load_state_failed": "Failed to load tool manager state",

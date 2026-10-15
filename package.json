@@ -85,6 +85,11 @@
                     "getToolsList"
                 ]
             },
+            "executeTool": {
+                "methods": [
+                    "executeTool"
+                ]
+            },
             "get-server-settings": {
                 "methods": [
                     "getServerSettings"

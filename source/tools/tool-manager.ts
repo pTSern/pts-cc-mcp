@@ -166,7 +166,8 @@ export class ToolManager {
                         category: category,
                         name: tool.name,
                         enabled: true, // Enabled by default
-                        description: tool.description
+                        description: tool.description,
+                        inputSchema: tool.inputSchema
                     });
                 });
             }
@@ -425,9 +426,17 @@ export class ToolManager {
 
     public getToolManagerState() {
         const currentConfig = this.getCurrentConfiguration();
+        const rawTools = currentConfig ? currentConfig.tools : this.getAvailableTools();
+        const schemaMap = new Map(this.availableTools.map(t => [`${t.category}_${t.name}`, t.inputSchema]));
+
+        const enrichedTools = rawTools.map(tool => ({
+            ...tool,
+            inputSchema: tool.inputSchema || schemaMap.get(`${tool.category}_${tool.name}`) || null
+        }));
+
         return {
             success: true,
-            availableTools: currentConfig ? currentConfig.tools : this.getAvailableTools(),
+            availableTools: enrichedTools,
             selectedConfigId: this.settings.currentConfigId,
             configurations: this.getConfigurations(),
             maxConfigSlots: this.settings.maxConfigSlots

@@ -14,6 +14,29 @@ interface ToolConfig {
     name: string;
     enabled: boolean;
     description: string;
+    inputSchema?: any;
+}
+
+export interface ToolPropertyDef {
+    name: string;
+    type: string;
+    description: string;
+    required: boolean;
+    enum?: string[];
+    default?: any;
+    placeholder?: string;
+}
+
+export interface TestModalState {
+    visible: boolean;
+    mode: 'default' | 'manual';
+    tool: ToolConfig | null;
+    properties: ToolPropertyDef[];
+    params: Record<string, any>;
+    isRunning: boolean;
+    result: any | null;
+    error: string | null;
+    execTime: number | null;
 }
 
 // Server settings interface
@@ -22,6 +45,121 @@ interface ServerSettings {
     autoStart: boolean;
     debugLog: boolean;
     maxConnections: number;
+}
+
+function parseToolProperties(inputSchema: any): ToolPropertyDef[] {
+    if (!inputSchema) return [];
+    let schema = inputSchema;
+    if (typeof schema === 'string') {
+        try {
+            schema = JSON.parse(schema);
+        } catch {
+            return [];
+        }
+    }
+    const propertiesObj = schema.properties || {};
+    const requiredList = Array.isArray(schema.required) ? schema.required : [];
+    const result: ToolPropertyDef[] = [];
+
+    for (const [key, prop] of Object.entries<any>(propertiesObj)) {
+        if (!prop) continue;
+        const type = prop.type || (Array.isArray(prop.enum) ? 'string' : 'string');
+        const enumValues = Array.isArray(prop.enum) ? prop.enum : undefined;
+        let placeholder = '';
+        if (type === 'string') {
+            if (key.toLowerCase().includes('path')) placeholder = 'e.g. db://assets/Scene/main.scene';
+            else if (key.toLowerCase().includes('uuid')) placeholder = 'e.g. root or node-uuid';
+            else placeholder = prop.description ? prop.description.slice(0, 40) : '';
+        } else if (type === 'number') {
+            placeholder = '0';
+        } else if (type === 'object') {
+            placeholder = '{}';
+        } else if (type === 'array') {
+            placeholder = '[]';
+        }
+
+        result.push({
+            name: key,
+            type: type,
+            description: prop.description || key,
+            required: requiredList.includes(key),
+            enum: enumValues,
+            default: prop.default,
+            placeholder: placeholder
+        });
+    }
+
+    result.sort((a, b) => {
+        if (a.name === 'action') return -1;
+        if (b.name === 'action') return 1;
+        if (a.required && !b.required) return -1;
+        if (!a.required && b.required) return 1;
+        return a.name.localeCompare(b.name);
+    });
+
+    return result;
+}
+
+function createDefaultParams(properties: ToolPropertyDef[]): Record<string, any> {
+    const params: Record<string, any> = {};
+    for (const prop of properties) {
+        if (prop.default !== undefined) {
+            params[prop.name] = prop.default;
+        } else if (prop.enum && prop.enum.length > 0) {
+            params[prop.name] = prop.enum[0];
+        } else if (prop.type === 'boolean') {
+            params[prop.name] = false;
+        } else if (prop.type === 'number') {
+            params[prop.name] = 0;
+        } else if (prop.type === 'object') {
+            params[prop.name] = '';
+        } else if (prop.type === 'array') {
+            params[prop.name] = '';
+        } else {
+            if (prop.name === 'action') {
+                params[prop.name] = 'get';
+            } else if (prop.name.toLowerCase().includes('path')) {
+                params[prop.name] = 'db://assets/Scene/main.scene';
+            } else if (prop.name.toLowerCase().includes('uuid')) {
+                params[prop.name] = '';
+            } else {
+                params[prop.name] = '';
+            }
+        }
+    }
+    return params;
+}
+
+function prepareCallArgs(properties: ToolPropertyDef[], rawParams: Record<string, any>): Record<string, any> {
+    const cleanArgs: Record<string, any> = {};
+    for (const prop of properties) {
+        const val = rawParams[prop.name];
+        if (val === undefined || val === null || val === '') {
+            if (prop.required && prop.type === 'boolean') {
+                cleanArgs[prop.name] = false;
+            }
+            continue;
+        }
+
+        if (prop.type === 'number') {
+            cleanArgs[prop.name] = Number(val);
+        } else if (prop.type === 'boolean') {
+            cleanArgs[prop.name] = Boolean(val);
+        } else if (prop.type === 'object' || prop.type === 'array') {
+            if (typeof val === 'string') {
+                try {
+                    cleanArgs[prop.name] = JSON.parse(val);
+                } catch {
+                    cleanArgs[prop.name] = val;
+                }
+            } else {
+                cleanArgs[prop.name] = val;
+            }
+        } else {
+            cleanArgs[prop.name] = val;
+        }
+    }
+    return cleanArgs;
 }
 
 module.exports = Editor.Panel.define({
@@ -335,6 +473,109 @@ module.exports = Editor.Panel.define({
                         }, 2000);
                     });
                     
+                    // ==================== Test Modal State ====================
+                    const testModal = ref<TestModalState>({
+                        visible: false,
+                        mode: 'default',
+                        tool: null,
+                        properties: [],
+                        params: {},
+                        isRunning: false,
+                        result: null,
+                        error: null,
+                        execTime: null
+                    });
+
+                    const openTestModal = (tool: ToolConfig) => {
+                        const properties = parseToolProperties(tool.inputSchema);
+                        const params = createDefaultParams(properties);
+
+                        testModal.value = {
+                            visible: true,
+                            mode: 'default',
+                            tool: tool,
+                            properties: properties,
+                            params: params,
+                            isRunning: false,
+                            result: null,
+                            error: null,
+                            execTime: null
+                        };
+                    };
+
+                    const closeTestModal = () => {
+                        testModal.value.visible = false;
+                        testModal.value.tool = null;
+                        testModal.value.result = null;
+                        testModal.value.error = null;
+                    };
+
+                    const switchToManualMode = () => {
+                        testModal.value.mode = 'manual';
+                    };
+
+                    const switchToDefaultMode = () => {
+                        testModal.value.mode = 'default';
+                    };
+
+                    const runQuickTest = async () => {
+                        if (!testModal.value.tool) return;
+                        const tool = testModal.value.tool;
+                        testModal.value.isRunning = true;
+                        testModal.value.result = null;
+                        testModal.value.error = null;
+                        testModal.value.execTime = null;
+
+                        const startTime = Date.now();
+                        try {
+                            const cleanArgs = prepareCallArgs(testModal.value.properties, testModal.value.params);
+                            console.log(`[TestModal] Quick executing: ${tool.name}`, cleanArgs);
+                            const res = await Editor.Message.request(EXTENSION_NAME, 'executeTool', tool.name, cleanArgs, tool.category);
+                            testModal.value.execTime = Date.now() - startTime;
+                            testModal.value.result = res;
+                        } catch (err: any) {
+                            testModal.value.execTime = Date.now() - startTime;
+                            testModal.value.error = err?.message || String(err);
+                            console.error(`[TestModal] Execution failed:`, err);
+                        } finally {
+                            testModal.value.isRunning = false;
+                        }
+                    };
+
+                    const invokeManualTool = async () => {
+                        if (!testModal.value.tool) return;
+                        const tool = testModal.value.tool;
+                        testModal.value.isRunning = true;
+                        testModal.value.result = null;
+                        testModal.value.error = null;
+                        testModal.value.execTime = null;
+
+                        const startTime = Date.now();
+                        try {
+                            const cleanArgs = prepareCallArgs(testModal.value.properties, testModal.value.params);
+                            console.log(`[TestModal] Manual invoking: ${tool.name}`, cleanArgs);
+                            const res = await Editor.Message.request(EXTENSION_NAME, 'executeTool', tool.name, cleanArgs, tool.category);
+                            testModal.value.execTime = Date.now() - startTime;
+                            testModal.value.result = res;
+                        } catch (err: any) {
+                            testModal.value.execTime = Date.now() - startTime;
+                            testModal.value.error = err?.message || String(err);
+                            console.error(`[TestModal] Manual execution failed:`, err);
+                        } finally {
+                            testModal.value.isRunning = false;
+                        }
+                    };
+
+                    const formatResult = (val: any): string => {
+                        if (val === null || val === undefined) return '';
+                        if (typeof val === 'string') return val;
+                        try {
+                            return JSON.stringify(val, null, 2);
+                        } catch {
+                            return String(val);
+                        }
+                    };
+
                     return {
                         // i18n
                         currentLanguage,
@@ -354,6 +595,7 @@ module.exports = Editor.Panel.define({
                         availableTools,
                         toolCategories,
                         settingsChanged,
+                        testModal,
 
                         // Computed
                         statusClass,
@@ -377,7 +619,16 @@ module.exports = Editor.Panel.define({
                         getToolsByCategory,
                         getCategoryToolCount,
                         getCategoryEnabledCount,
-                        getCategoryDisplayName
+                        getCategoryDisplayName,
+
+                        // Tester Methods
+                        openTestModal,
+                        closeTestModal,
+                        switchToManualMode,
+                        switchToDefaultMode,
+                        runQuickTest,
+                        invokeManualTool,
+                        formatResult
                     };
                 },
                 template: readFileSync(join(__dirname, '../../../static/template/vue/mcp-server-app.html'), 'utf-8'),

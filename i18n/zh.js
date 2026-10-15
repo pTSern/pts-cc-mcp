@@ -134,6 +134,24 @@ module.exports = {
     "cat_nexus": "Nexus 事件查询",
     "cat_animgraph": "动画图状态机",
     "cat_batch": "批处理原子事务",
+    "cat_knowledge": "引擎知识库与API目录",
+    "cat_uiBuilder": "声明式UI构建器",
+
+    // Tool Tester Dialog
+    "tool_test": "测试",
+    "test_tool": "测试工具",
+    "test_mode_quick": "快速",
+    "test_mode_manual": "手动",
+    "test_desc_quick": "使用预填充的默认参数执行测试",
+    "test_desc_manual": "通过组件属性检查器自定义参数",
+    "invoke": "调用",
+    "executing": "正在执行...",
+    "execution_result": "执行结果",
+    "execution_success": "成功",
+    "execution_failed": "失败",
+    "no_params_required": "该工具无需输入任何参数。",
+    "param_required": "必填参数",
+    "back_to_quick": "返回快速测试",
 
     // UI Dialogs & Operations
     "load_state_failed": "加载工具管理器状态失败",

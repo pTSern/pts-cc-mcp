@@ -125,6 +125,7 @@ export interface ToolConfig {
     name: string;
     enabled: boolean;
     description: string;
+    inputSchema?: any;
 }
 
 export interface ToolConfiguration {

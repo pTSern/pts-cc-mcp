@@ -261,7 +261,18 @@
                             <div class="tool-content-col">
                                 <div class="tool-name-line">
                                     <span class="tool-name-text font-mono">{{ tool.name }}</span>
-                                    <span v-if="tool.enabled" class="pill-active">{{ t('enabled') }}</span>
+                                    <div class="tool-status-flex-group">
+                                        <span v-if="tool.enabled" class="pill-active">{{ t('enabled') }}</span>
+                                        <button
+                                            type="button"
+                                            class="btn-tool-test"
+                                            @click.stop="openTestModal(tool)"
+                                            :title="t('test_tool')"
+                                        >
+                                            <span class="btn-test-icon">⚡</span>
+                                            <span>{{ t('tool_test') }}</span>
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="tool-desc-text">{{ tool.description }}</div>
                             </div>
@@ -270,5 +281,178 @@
                 </div>
             </div>
         </section>
+    </div>
+
+    <!-- Tool Tester Modal Overlay -->
+    <div v-if="testModal.visible" class="test-modal-backdrop" @click.self="closeTestModal">
+        <div class="test-modal-dialog" :class="{ 'is-manual-mode': testModal.mode === 'manual' }">
+            <!-- Modal Header -->
+            <div class="test-modal-header">
+                <div class="test-modal-title">
+                    <span class="test-modal-icon">⚡</span>
+                    <span class="test-modal-name font-mono">{{ testModal.tool ? testModal.tool.name : 'Test' }}</span>
+                </div>
+                <button type="button" class="test-modal-close-btn" @click="closeTestModal" title="Close">&times;</button>
+            </div>
+
+            <!-- Mode 1: Default Mode -->
+            <div v-if="testModal.mode === 'default'" class="test-modal-body test-mode-default">
+                <div class="test-default-actions">
+                    <button
+                        type="button"
+                        class="pts-btn btn-primary test-action-btn"
+                        @click="runQuickTest"
+                        :disabled="testModal.isRunning"
+                    >
+                        <span class="btn-icon">⚡</span>
+                        <span>{{ t('test_mode_quick') }}</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        class="pts-btn btn-secondary test-action-btn"
+                        @click="switchToManualMode"
+                        :disabled="testModal.isRunning"
+                    >
+                        <span class="btn-icon">🛠</span>
+                        <span>{{ t('test_mode_manual') }}</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        class="pts-btn btn-secondary test-action-btn btn-cancel"
+                        @click="closeTestModal"
+                        :disabled="testModal.isRunning"
+                    >
+                        <span>{{ t('cancel') }}</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Mode 2: Manual Mode (Inspector Style with smooth animated transition) -->
+            <div v-else class="test-modal-body test-mode-manual animated-manual-entrance">
+                <div class="test-manual-subbar">
+                    <button type="button" class="btn-back-link" @click="switchToDefaultMode">
+                        &larr; {{ t('back_to_quick') }}
+                    </button>
+                </div>
+
+                <!-- Empty Parameters Notice -->
+                <div v-if="testModal.properties.length === 0" class="empty-params-notice">
+                    {{ t('no_params_required') }}
+                </div>
+
+                <!-- Inspector Form Fields -->
+                <div v-else class="inspector-form-container">
+                    <div
+                        v-for="prop in testModal.properties"
+                        :key="prop.name"
+                        class="inspector-row"
+                    >
+                        <!-- Left Column: Parameter Label with Hover Tooltip -->
+                        <div class="inspector-label-col">
+                            <span class="param-name font-mono">
+                                {{ prop.name }}
+                                <span v-if="prop.required" class="param-required-mark" title="Required">*</span>
+                            </span>
+                            <!-- Tooltip Bubble on Hover -->
+                            <div class="param-tooltip-bubble">
+                                <div class="tooltip-title font-mono">{{ prop.name }} <span class="tooltip-type">({{ prop.type }})</span></div>
+                                <div class="tooltip-desc">{{ prop.description }}</div>
+                                <div v-if="prop.enum" class="tooltip-enum">
+                                    Options: <span class="font-mono">{{ prop.enum.join(' | ') }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Inspector Box Input -->
+                        <div class="inspector-input-col">
+                            <!-- Case A: Enum Selection Dropdown -->
+                            <select
+                                v-if="prop.enum && prop.enum.length > 0"
+                                class="inspector-input inspector-select font-mono"
+                                v-model="testModal.params[prop.name]"
+                            >
+                                <option v-for="opt in prop.enum" :key="opt" :value="opt">{{ opt }}</option>
+                            </select>
+
+                            <!-- Case B: Boolean Checkbox -->
+                            <div v-else-if="prop.type === 'boolean'" class="inspector-checkbox-wrap">
+                                <ui-checkbox
+                                    :value="Boolean(testModal.params[prop.name])"
+                                    @change="(e) => testModal.params[prop.name] = e.target.checked"
+                                ></ui-checkbox>
+                                <span class="checkbox-label font-mono">{{ Boolean(testModal.params[prop.name]) ? 'true' : 'false' }}</span>
+                            </div>
+
+                            <!-- Case C: Number Input -->
+                            <input
+                                v-else-if="prop.type === 'number'"
+                                type="number"
+                                class="inspector-input font-mono"
+                                v-model.number="testModal.params[prop.name]"
+                                :placeholder="prop.placeholder"
+                            />
+
+                            <!-- Case D: General Text Input (String, Object, Array) -->
+                            <input
+                                v-else
+                                type="text"
+                                class="inspector-input font-mono"
+                                v-model="testModal.params[prop.name]"
+                                :placeholder="prop.placeholder"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Manual Mode Footer Actions -->
+                <div class="test-manual-actions">
+                    <button
+                        type="button"
+                        class="pts-btn btn-primary btn-invoke"
+                        @click="invokeManualTool"
+                        :disabled="testModal.isRunning"
+                    >
+                        <span class="btn-icon">{{ testModal.isRunning ? '⏳' : '🚀' }}</span>
+                        <span>{{ testModal.isRunning ? t('executing') : t('invoke') }}</span>
+                    </button>
+                    <button
+                        type="button"
+                        class="pts-btn btn-secondary btn-cancel"
+                        @click="closeTestModal"
+                        :disabled="testModal.isRunning"
+                    >
+                        <span>{{ t('cancel') }}</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Execution Result Panel (Shows below for both Quick and Manual) -->
+            <div v-if="testModal.isRunning || testModal.result !== null || testModal.error !== null" class="test-result-section">
+                <div class="result-header">
+                    <div class="result-title-group">
+                        <span class="result-label">{{ t('execution_result') }}</span>
+                        <span v-if="testModal.isRunning" class="result-pill running">{{ t('executing') }}</span>
+                        <span v-else-if="testModal.error" class="result-pill error">{{ t('execution_failed') }}</span>
+                        <span v-else class="result-pill success">{{ t('execution_success') }}</span>
+                        <span v-if="testModal.execTime !== null" class="result-time">{{ testModal.execTime }}ms</span>
+                    </div>
+                </div>
+
+                <div v-if="testModal.isRunning" class="result-loading-box">
+                    <div class="spinner"></div>
+                    <span>Invoking {{ testModal.tool ? testModal.tool.name : '' }} in Cocos Creator...</span>
+                </div>
+
+                <div v-else-if="testModal.error" class="result-output-box error-box">
+                    <pre class="result-pre font-mono">{{ testModal.error }}</pre>
+                </div>
+
+                <div v-else class="result-output-box success-box">
+                    <pre class="result-pre font-mono">{{ formatResult(testModal.result) }}</pre>
+                </div>
+            </div>
+        </div>
     </div>
 </div>

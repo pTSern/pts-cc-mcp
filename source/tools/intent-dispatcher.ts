@@ -549,7 +549,7 @@ export class IntentDispatcher {
                 }
                 if (action === 'get' || action === 'list_types') {
                     return await compTools.handleComponentQuery({
-                        action: action === 'list_types' ? 'get_available_components' : 'get_components',
+                        action: action === 'list_types' ? 'available_types' : 'list',
                         nodeUuid: args?.nodeUuid,
                         componentType: args?.componentType,
                         category: args?.category

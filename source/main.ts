@@ -82,6 +82,23 @@ export const methods: { [key: string]: (...any: any) => any } = {
     },
 
     /**
+     * @en Execute tool for testing directly from the panel
+     */
+    async executeTool(toolName: string, args: any, category?: string) {
+        if (!mcpServer) {
+            throw new Error(t('mcp_server_not_init'));
+        }
+        try {
+            return await mcpServer.executeToolCall(toolName, args);
+        } catch (err: any) {
+            if (category && !toolName.startsWith(category + '_')) {
+                return await mcpServer.executeToolCall(`${category}_${toolName}`, args);
+            }
+            throw err;
+        }
+    },
+
+    /**
      * @en Get server settings
      */
     async getServerSettings() {
