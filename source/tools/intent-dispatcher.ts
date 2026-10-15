@@ -284,16 +284,21 @@ export class IntentDispatcher {
             // 9. Validation & Diagnostics
             {
                 name: 'validation_manage',
-                description: 'SCENE & ASSET VALIDATION: Audit scene node hierarchies for missing UITransforms, duplicate names, zero-size containers, out-of-bounds nodes, and corrupt asset references.',
+                description: 'SCENE & ASSET VALIDATION: Audit scene node hierarchies for missing UITransforms, duplicate names, zero-size containers, out-of-bounds nodes, broken asset GUID references, and capture/diff scene regression snapshots.',
                 inputSchema: {
                     type: 'object',
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['check_scene', 'check_assets', 'check_viewport', 'validate_json'],
-                            description: 'Validation action opcode'
+                            enum: [
+                                'check_scene', 'check_assets', 'check_viewport', 'validate_json',
+                                'capture_snapshot', 'diff_snapshot', 'list_snapshots', 'restore_snapshot'
+                            ],
+                            description: 'Validation action opcode: "check_scene" = audit hierarchy | "check_assets" = scan broken GUIDs | "check_viewport" = find out-of-bounds nodes | "capture_snapshot" = capture scene state snapshot | "diff_snapshot" = visual regression diff against snapshot | "list_snapshots" = list captured snapshots | "restore_snapshot" = restore scene to snapshot | "validate_json" = validate & auto-fix JSON'
                         },
                         threshold: { type: 'number', default: 3000, description: 'Out-of-bounds pixel threshold for viewport check' },
+                        tag: { type: 'string', description: 'Label or tag for capture_snapshot' },
+                        snapshotId: { type: 'string', description: 'Target snapshot ID for diff_snapshot or restore_snapshot' },
                         jsonString: { type: 'string', description: 'JSON string to validate/repair' }
                     },
                     required: ['action']
@@ -673,12 +678,7 @@ export class IntentDispatcher {
             case 'validation_manage': {
                 const valTools = this.tools['validation'];
                 if (!valTools) throw new Error('Validation tools not initialized');
-
-                if (action === 'check_scene') return await valTools.checkScene(args);
-                if (action === 'check_assets') return await valTools.checkAssets(args);
-                if (action === 'check_viewport') return await valTools.checkViewport(args);
-                if (action === 'validate_json') return await valTools.validateJsonParams(args?.jsonString);
-                return await valTools.checkScene(args);
+                return await valTools.handleValidationManage(args);
             }
 
             case 'batch_execute': {
@@ -797,6 +797,11 @@ export class IntentDispatcher {
         }
         if (toolName === 'get_mcp_guide' || toolName === 'mcp_doc_query' || toolName === 'check_agents_doc' || toolName === 'sync_agents_doc') {
             return await this.dispatchIntent('knowledge_query', { action: toolName === 'mcp_doc_query' ? 'get_mcp_guide' : toolName, ...args });
+        }
+        if (toolName === 'check_scene' || toolName === 'check_assets' || toolName === 'check_viewport' ||
+            toolName === 'capture_snapshot' || toolName === 'diff_snapshot' || toolName === 'list_snapshots' ||
+            toolName === 'restore_snapshot' || toolName === 'validate_json_params') {
+            return await this.dispatchIntent('validation_manage', { action: toolName === 'validate_json_params' ? 'validate_json' : toolName, ...args });
         }
 
         // Map category prefix to internal tool registry key
