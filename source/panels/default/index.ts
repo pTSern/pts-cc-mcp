@@ -102,24 +102,43 @@ function parseToolProperties(inputSchema: any): ToolPropertyDef[] {
 
 function createDefaultParams(properties: ToolPropertyDef[]): Record<string, any> {
     const params: Record<string, any> = {};
-    const safeActions = ['query', 'get_current', 'get_list', 'get_info', 'info', 'inspect', 'list', 'status', 'check_ready', 'check_scene', 'history', 'get_stats', 'get'];
+    const safeActions = [
+        'query', 'get_current', 'get_list', 'get_info', 'info', 'inspect', 'list', 'status',
+        'check_ready', 'check_scene', 'history', 'get_stats', 'get', 'resolve', 'manifest',
+        'generate_url', 'check_assets', 'check_viewport', 'list_snapshots', 'compile_watch',
+        'query_tool', 'query_pivot', 'query_coordinate', 'query_view_mode', 'query_2d_3d',
+        'query_grid', 'query_3d_mode', 'query_size', 'get_status', 'get_tree_graph', 'list_scenes', 'list_workflows'
+    ];
 
     for (const prop of properties) {
         if (prop.default !== undefined) {
             params[prop.name] = prop.default;
         } else if (prop.enum && prop.enum.length > 0) {
             if (prop.name === 'action') {
-                const foundSafe = prop.enum.find(e => safeActions.includes(e));
+                const foundSafe = prop.enum.find(e =>
+                    safeActions.includes(e) ||
+                    e.startsWith('query') ||
+                    e.startsWith('get') ||
+                    e.startsWith('list') ||
+                    e.startsWith('check') ||
+                    e.includes('status')
+                );
                 params[prop.name] = foundSafe || prop.enum[0];
             } else {
                 params[prop.name] = prop.enum[0];
             }
         } else if (prop.type === 'boolean') {
-            params[prop.name] = false;
+            if (prop.name === 'includeUiNodes') params[prop.name] = true;
+            else params[prop.name] = false;
         } else if (prop.type === 'number') {
             if (prop.name === 'maxDepth') params[prop.name] = 5;
             else if (prop.name === 'sample') params[prop.name] = 60;
             else if (prop.name === 'speed') params[prop.name] = 1;
+            else if (prop.name === 'duration') params[prop.name] = 50;
+            else if (prop.name === 'x' || prop.name === 'startX') params[prop.name] = 100;
+            else if (prop.name === 'y' || prop.name === 'startY') params[prop.name] = 100;
+            else if (prop.name === 'endX' || prop.name === 'endY') params[prop.name] = 200;
+            else if (prop.name === 'size') params[prop.name] = 30;
             else params[prop.name] = 0;
         } else if (prop.type === 'object') {
             if (prop.name === 'tree') {
@@ -134,6 +153,10 @@ function createDefaultParams(properties: ToolPropertyDef[]): Record<string, any>
                 params[prop.name] = 'get';
             } else if (prop.name === 'folder') {
                 params[prop.name] = 'db://assets';
+            } else if (prop.name === 'code') {
+                params[prop.name] = 'cc.director.getScene()?.name || "Scene Loaded"';
+            } else if (prop.name === 'target') {
+                params[prop.name] = 'Canvas';
             } else if (prop.name.toLowerCase().includes('path')) {
                 params[prop.name] = 'db://assets/Scene/main.scene';
             } else if (prop.name.toLowerCase().includes('uuid')) {

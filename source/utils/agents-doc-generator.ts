@@ -4,7 +4,7 @@
 
 export const MCP_DOC_NOTICE = `> [!IMPORTANT]
 > **AI Agent Self-Check Instruction (Mandatory)**:
-> Check if this \`AGENTS.md\` file contains the complete explanation of the \`pts-cc-mcp\` tools (all 16 Unified Intent APIs, parameters, and workflows).
+> Check if this \`AGENTS.md\` file contains the complete explanation of the \`pts-cc-mcp\` tools (all 17 Unified Intent APIs, parameters, and workflows).
 > - **If YES (Already Present)**: Proceed directly with your tasks using the MCP tools as documented below.
 > - **If NO (Missing or Incomplete)**: Call the MCP tool \`knowledge_query(action="get_mcp_guide")\` to fetch the complete MCP tools explanation, and write/append it to this \`AGENTS.md\` file immediately before proceeding!`;
 
@@ -44,6 +44,9 @@ Before performing any manual file editing on \`.scene\` or \`.prefab\` assets:
 | **\`scene_view_control\`**| \`action: "camera_focus" \\| "camera_view" \\| "grid_toggle" \\| "gizmo_mode"\`, \`nodeUuid\`, \`viewMode\` | Viewport camera manipulation and editor overlays. |
 | **\`spine_manage\`** | \`action: "setup_rig" \\| "query_animations" \\| "set_animation"\`, \`nodeUuid\`, \`spineAssetPath\`, \`defaultAnimation\` | Rapid one-call Spine skeleton or FastSpine rig setup. |
 | **\`debug_manage\`** | \`action: "get_logs" \\| "search_logs" \\| "get_stats"\` | Editor console monitoring and performance telemetry. |
+| **\`preferences_manage\`** | \`action: "open_panel" \\| "get_config" \\| "set_config" \\| "reset_config"\`, \`category\`, \`path\`, \`value\` | Editor preferences and configuration management. |
+| **\`broadcast_manage\`** | \`action: "subscribe" \\| "emit" \\| "history" \\| "clear"\`, \`channel\`, \`data\` | Editor/Scene broadcast event bus for pub/sub telemetry. |
+| **\`nexus_manage\`** | \`action: "get_tree_graph" \\| "list_scenes" \\| "list_workflows" \\| "scan_network" \\| "query_event" \\| "generate_html"\`, \`type\`, \`target\`, \`format: "ascii" \\| "json" \\| "both"\` | Tree graph query engine for scene node hierarchies with workflows, function execution pipelines, and event dependency networks. |
 
 ---
 

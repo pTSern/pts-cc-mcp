@@ -791,6 +791,7 @@ export class SceneTools implements ToolExecutor {
         switch (action) {
             case 'execute_component_method':
                 return await this.executeComponentMethod(args.uuid, args.name, args.args);
+            case 'execute_script':
             case 'execute_scene_script':
                 return await this.executeSceneScript(args.name, args.method, args.args);
             case 'restore_prefab':

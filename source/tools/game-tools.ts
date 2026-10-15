@@ -153,16 +153,22 @@ export class GameTools implements ToolExecutor {
     async execute(toolName: string, args: any): Promise<ToolResponse> {
         switch (toolName) {
             case 'tap':
+            case 'game_tap':
                 return await this.handleTap(args);
             case 'swipe':
+            case 'game_swipe':
                 return await this.handleSwipe(args);
             case 'tap_node':
+            case 'game_tap_node':
                 return await this.handleTapNode(args);
             case 'screenshot':
+            case 'game_screenshot':
                 return await this.handleScreenshot(args);
             case 'query_state':
+            case 'game_query_state':
                 return await this.handleQueryState(args);
             case 'eval':
+            case 'game_eval':
                 return await this.handleEval(args);
             default:
                 throw new Error(`Unknown gameplay tool: ${toolName}`);
@@ -219,7 +225,7 @@ export class GameTools implements ToolExecutor {
     }
 
     private async handleEval(args: any): Promise<ToolResponse> {
-        const { code } = args;
+        const code = args?.code && args.code.trim() ? args.code : 'cc.director.getScene()?.name || "Scene Loaded"';
         return await this.callSceneScript('gameEval', [code]);
     }
 }

@@ -1,10 +1,35 @@
 import { ToolDefinition, ToolResponse } from '../types';
+import { isNexusAvailable } from '../utils/nexus-checker';
 
 export class IntentDispatcher {
     private tools: Record<string, any>;
+    private toolMap: Map<string, any> = new Map();
 
     constructor(tools: Record<string, any>) {
         this.tools = tools;
+        this.buildToolMap();
+    }
+
+    public buildToolMap(): void {
+        this.toolMap.clear();
+        for (const [cat, toolSet] of Object.entries(this.tools)) {
+            if (!toolSet) continue;
+            if (typeof toolSet.getTools === 'function') {
+                try {
+                    const defs = toolSet.getTools();
+                    if (Array.isArray(defs)) {
+                        for (const def of defs) {
+                            if (def && def.name) {
+                                this.toolMap.set(def.name, toolSet);
+                                this.toolMap.set(`${cat}_${def.name}`, toolSet);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error(`[IntentDispatcher] Failed to index tools from ${cat}:`, e);
+                }
+            }
+        }
     }
 
     public getIntentTools(): ToolDefinition[] {
@@ -18,9 +43,10 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['get_current', 'get_list', 'open', 'save', 'save_as', 'create', 'close', 'hierarchy', 'inspect', 'stats', 'execute_script', 'execute_component_method'],
+                            enum: ['get_current', 'get_list', 'open', 'save', 'save_as', 'create', 'close', 'hierarchy', 'inspect', 'stats', 'execute_script', 'execute_component_method', 'tree_graph', 'flow'],
                             description: 'Scene action opcode'
                         },
+                        format: { type: 'string', enum: ['both', 'ascii', 'json'], default: 'both', description: 'Result format for tree_graph/hierarchy ("ascii", "json", "both")' },
                         scenePath: { type: 'string', description: 'Scene asset path (e.g. "db://assets/scenes/Game.scene")' },
                         sceneName: { type: 'string', description: 'New scene name (for create action)' },
                         savePath: { type: 'string', description: 'Save location path (e.g. "db://assets/scenes/NewScene.scene")' },
@@ -460,6 +486,59 @@ export class IntentDispatcher {
                     },
                     required: ['action']
                 }
+            },
+
+            // 17. Project Architecture & Tree Graph (Nexus)
+            {
+                name: 'nexus_manage',
+                description: 'PROJECT ARCHITECTURE & TREE GRAPHS: Query scene node flow trees with workflows/components, function execution call pipelines, and pEngine.Json/pTSAsset event dependency networks in ASCII or JSON format. Ideal for LLM reasoning.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['get_tree_graph', 'list_scenes', 'list_workflows', 'scan_network', 'query_event', 'generate_html'],
+                            description: 'Nexus action opcode'
+                        },
+                        type: {
+                            type: 'string',
+                            enum: ['scene_flow', 'workflow', 'event_nexus', 'list_scenes', 'list_workflows'],
+                            description: 'Graph type to query: "scene_flow" (Node hierarchy + workflows), "workflow" (Function call pipeline), "event_nexus" (Event & asset network), "list_scenes" (All indexed scenes/prefabs), "list_workflows" (All execution pipelines)'
+                        },
+                        target: {
+                            type: 'string',
+                            description: 'Target identifier: scene/prefab filename (e.g. "fast_test.scene" or "assets/test_bund/fast_test.scene"), workflow method, or event name'
+                        },
+                        nodePath: {
+                            type: 'string',
+                            description: 'Optional subpath filter in scene tree (e.g. "Canvas/GameLayer")'
+                        },
+                        format: {
+                            type: 'string',
+                            enum: ['both', 'ascii', 'json'],
+                            default: 'both',
+                            description: 'Result format. "ascii" is optimal for token-efficient LLM context; "json" for structured data; "both" includes both'
+                        },
+                        maxDepth: {
+                            type: 'number',
+                            default: 10,
+                            description: 'Max tree traversal depth'
+                        },
+                        domainFilter: {
+                            type: 'string',
+                            description: 'Domain filter for scan_network (e.g. "ALL", "UI Navigation", etc.)'
+                        },
+                        eventNameOrUuid: {
+                            type: 'string',
+                            description: 'Event name or UUID for query_event'
+                        },
+                        outputPath: {
+                            type: 'string',
+                            description: 'Output HTML path for generate_html'
+                        }
+                    },
+                    required: ['action']
+                }
             }
         ];
     }
@@ -469,7 +548,8 @@ export class IntentDispatcher {
             'scene_manage', 'node_manage', 'component_manage', 'prefab_manage',
             'ui_builder', 'anim_manage', 'asset_manage', 'knowledge_query',
             'validation_manage', 'batch_execute', 'project_manage', 'scene_view_control',
-            'spine_manage', 'debug_manage', 'preferences_manage', 'broadcast_manage'
+            'spine_manage', 'debug_manage', 'preferences_manage', 'broadcast_manage',
+            'nexus_manage', 'nexus_get_tree_graph'
         ]);
         return intentNames.has(toolName);
     }
@@ -489,6 +569,19 @@ export class IntentDispatcher {
 
         switch (toolName) {
             case 'scene_manage': {
+                if (action === 'tree_graph' || action === 'flow') {
+                    const nexusTools = this.tools['nexus'];
+                    if (nexusTools) {
+                        return await nexusTools.getTreeGraph({
+                            type: 'scene_flow',
+                            target: args?.scenePath || args?.sceneName || args?.name,
+                            nodePath: args?.filterNode || args?.nodePath,
+                            format: args?.format || 'both',
+                            maxDepth: args?.maxDepth
+                        });
+                    }
+                }
+
                 const sceneTools = this.tools['scene'];
                 if (!sceneTools) throw new Error('Scene tools not initialized');
 
@@ -501,7 +594,7 @@ export class IntentDispatcher {
                 if (action === 'stats') {
                     return await sceneTools.handleQuerySystem({ action: 'get_stats' });
                 }
-                if (action === 'execute_script' || action === 'execute_component_method') {
+                if (action === 'execute_script' || action === 'execute_scene_script' || action === 'execute_component_method') {
                     return await sceneTools.handleExecutionControl(args);
                 }
                 return await sceneTools.handleSceneManagement(args);
@@ -773,6 +866,22 @@ export class IntentDispatcher {
                 return await bcTools.execute(action || 'history', args);
             }
 
+            case 'nexus_manage':
+            case 'nexus_get_tree_graph': {
+                if (!isNexusAvailable()) {
+                    return {
+                        success: false,
+                        error: 'pts-nexus extension is not installed or is disabled in the project.'
+                    };
+                }
+                const nexusTools = this.tools['nexus'];
+                if (!nexusTools) throw new Error('Nexus tools not initialized');
+                if (toolName === 'nexus_get_tree_graph') {
+                    return await nexusTools.execute('nexus_get_tree_graph', args);
+                }
+                return await nexusTools.execute('nexus_manage', args);
+            }
+
             default:
                 throw new Error(`Unknown intent tool: ${toolName}`);
         }
@@ -780,6 +889,18 @@ export class IntentDispatcher {
 
     private async dispatchLegacyTool(toolName: string, args: any): Promise<ToolResponse> {
         // Direct tool aliases
+        if (toolName === 'nexus_get_tree_graph' || toolName === 'get_tree_graph' || toolName === 'query_tree') {
+            return await this.dispatchIntent('nexus_manage', { action: 'get_tree_graph', ...args });
+        }
+        if (toolName === 'nexus_scan_network' || toolName === 'scan_network') {
+            return await this.dispatchIntent('nexus_manage', { action: 'scan_network', ...args });
+        }
+        if (toolName === 'nexus_query_event' || toolName === 'query_event') {
+            return await this.dispatchIntent('nexus_manage', { action: 'query_event', ...args });
+        }
+        if (toolName === 'nexus_generate_html' || toolName === 'generate_html') {
+            return await this.dispatchIntent('nexus_manage', { action: 'generate_html', ...args });
+        }
         if (toolName === 'batch_execute' || toolName === 'editor_batch_execute') {
             return await this.dispatchIntent('batch_execute', args);
         }
@@ -804,7 +925,35 @@ export class IntentDispatcher {
             return await this.dispatchIntent('validation_manage', { action: toolName === 'validate_json_params' ? 'validate_json' : toolName, ...args });
         }
 
-        // Map category prefix to internal tool registry key
+        // 1. Direct match from registered tool definitions map (O(1))
+        const directToolSet = this.toolMap.get(toolName);
+        if (directToolSet && typeof directToolSet.execute === 'function') {
+            try {
+                return await directToolSet.execute(toolName, args);
+            } catch (err: any) {
+                if (err && err.message && (err.message.includes('Unknown') || err.message.includes('unknown')) && toolName.includes('_')) {
+                    const method = toolName.split('_').slice(1).join('_');
+                    try {
+                        return await directToolSet.execute(method, args);
+                    } catch {}
+                }
+                throw err;
+            }
+        }
+
+        // 2. Gameplay driver alias matching (tap <-> game_tap, eval <-> game_eval, etc.)
+        const gameTools = this.tools['game'];
+        if (gameTools && typeof gameTools.execute === 'function') {
+            const gameToolNames = new Set([
+                'tap', 'swipe', 'tap_node', 'screenshot', 'query_state', 'eval',
+                'game_tap', 'game_swipe', 'game_tap_node', 'game_screenshot', 'game_query_state', 'game_eval'
+            ]);
+            if (gameToolNames.has(toolName)) {
+                return await gameTools.execute(toolName, args);
+            }
+        }
+
+        // 3. Category prefix mapping fallback
         const parts = toolName.split('_');
         const prefix = parts[0];
         const method = parts.slice(1).join('_');
@@ -832,19 +981,18 @@ export class IntentDispatcher {
             batch: 'batch',
             knowledge: 'knowledge',
             ui: 'uiBuilder',
-            uiBuilder: 'uiBuilder'
+            uiBuilder: 'uiBuilder',
+            nexus: 'nexus'
         };
 
         const targetCat = categoryMap[prefix] || prefix;
         const targetToolSet = this.tools[targetCat];
 
         if (targetToolSet && typeof targetToolSet.execute === 'function') {
-            // First try calling with original toolName (e.g. 'scene_management')
             try {
                 return await targetToolSet.execute(toolName, args);
             } catch (err: any) {
-                // If it threw unknown tool, try method name (e.g. 'management')
-                if (err && err.message && err.message.includes('Unknown tool')) {
+                if (err && err.message && (err.message.includes('Unknown') || err.message.includes('unknown'))) {
                     try {
                         return await targetToolSet.execute(method, args);
                     } catch {}
@@ -854,13 +1002,13 @@ export class IntentDispatcher {
             }
         }
 
-        // Search all registered tool sets
+        // 4. Defensive search across all registered tools
         for (const [catName, toolSet] of Object.entries(this.tools)) {
             if (typeof toolSet?.execute === 'function') {
                 try {
                     return await toolSet.execute(toolName, args);
                 } catch (err: any) {
-                    if (err && err.message && err.message.includes('Unknown tool')) {
+                    if (err && err.message && (err.message.includes('Unknown') || err.message.includes('unknown'))) {
                         try {
                             return await toolSet.execute(method, args);
                         } catch {}

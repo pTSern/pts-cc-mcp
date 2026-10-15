@@ -3,6 +3,7 @@ import { ToolConfig, ToolConfiguration, ToolManagerSettings, ToolDefinition } fr
 import * as fs from 'fs';
 import * as path from 'path';
 import { t } from '../utils/i18n';
+import { isNexusAvailable } from '../utils/nexus-checker';
 
 export class ToolManager {
     private settings: ToolManagerSettings;
@@ -23,6 +24,7 @@ export class ToolManager {
 
     private syncAvailableToolsToConfigurations(): void {
         let changed = false;
+        const nexusActive = isNexusAvailable();
         for (const config of this.settings.configurations) {
             const existingKeys = new Set(config.tools.map(t => `${t.category}_${t.name}`));
             for (const tool of this.availableTools) {
@@ -30,6 +32,16 @@ export class ToolManager {
                 if (!existingKeys.has(key)) {
                     config.tools.push({ ...tool });
                     changed = true;
+                }
+            }
+
+            // Automatically disable nexus tools if pts-nexus is absent or disabled
+            for (const tool of config.tools) {
+                if (tool.category === 'nexus' || tool.name.startsWith('nexus_')) {
+                    if (!nexusActive && tool.enabled) {
+                        tool.enabled = false;
+                        changed = true;
+                    }
                 }
             }
         }
@@ -107,7 +119,8 @@ export class ToolManager {
                 './project-tools', './debug-tools', './preferences-tools', './server-tools',
                 './broadcast-tools', './scene-view-tools', './reference-image-tools',
                 './asset-advanced-tools', './validation-tools', './game-tools',
-                './animgraph-tools', './batch-tools', './knowledge-tools', './ui-builder-tools'
+                './animgraph-tools', './batch-tools', './knowledge-tools', './ui-builder-tools',
+                './nexus-tools'
             ];
             for (const mod of toolModNames) {
                 try {
@@ -135,6 +148,7 @@ export class ToolManager {
             const { KnowledgeTools } = require('./knowledge-tools');
             const { UIBuilderTools } = require('./ui-builder-tools');
             const { AnimationTools } = require('./animation-tools');
+            const { NexusTools } = require('./nexus-tools');
 
             // Initialize tool instances
             const tools = {
@@ -151,6 +165,7 @@ export class ToolManager {
                 referenceImage: new ReferenceImageTools(),
                 assetAdvanced: new AssetAdvancedTools(),
                 validation: new ValidationTools(),
+                nexus: new NexusTools(),
                 game: new GameTools(),
                 animgraph: new AnimgraphTools(),
                 animation: new AnimationTools(),
@@ -160,14 +175,16 @@ export class ToolManager {
             };
 
             // Get tool definitions from each tool class
+            const nexusActive = isNexusAvailable();
             this.availableTools = [];
             for (const [category, toolSet] of Object.entries(tools)) {
                 const toolDefinitions = toolSet.getTools();
                 toolDefinitions.forEach((tool: any) => {
+                    const isNexusTool = category === 'nexus' || tool.name.startsWith('nexus_');
                     this.availableTools.push({
                         category: category,
                         name: tool.name,
-                        enabled: true, // Enabled by default
+                        enabled: isNexusTool ? nexusActive : true,
                         description: tool.description,
                         inputSchema: tool.inputSchema
                     });
@@ -419,22 +436,32 @@ export class ToolManager {
     }
 
     public getEnabledTools(): ToolConfig[] {
+        const nexusActive = isNexusAvailable();
         const currentConfig = this.getCurrentConfiguration();
-        if (!currentConfig) {
-            return this.availableTools.filter(tool => tool.enabled);
-        }
-        return currentConfig.tools.filter(tool => tool.enabled);
+        const tools = currentConfig ? currentConfig.tools : this.availableTools;
+        return tools.filter(tool => {
+            const isNexusTool = tool.category === 'nexus' || tool.name.startsWith('nexus_');
+            if (isNexusTool && !nexusActive) {
+                return false;
+            }
+            return tool.enabled;
+        });
     }
 
     public getToolManagerState() {
+        const nexusActive = isNexusAvailable();
         const currentConfig = this.getCurrentConfiguration();
         const rawTools = currentConfig ? currentConfig.tools : this.getAvailableTools();
         const schemaMap = new Map(this.availableTools.map(t => [`${t.category}_${t.name}`, t.inputSchema]));
 
-        const enrichedTools = rawTools.map(tool => ({
-            ...tool,
-            inputSchema: tool.inputSchema || schemaMap.get(`${tool.category}_${tool.name}`) || null
-        }));
+        const enrichedTools = rawTools.map(tool => {
+            const isNexusTool = tool.category === 'nexus' || tool.name.startsWith('nexus_');
+            return {
+                ...tool,
+                enabled: isNexusTool ? (nexusActive && tool.enabled) : tool.enabled,
+                inputSchema: tool.inputSchema || schemaMap.get(`${tool.category}_${tool.name}`) || null
+            };
+        });
 
         return {
             success: true,

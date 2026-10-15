@@ -17,6 +17,7 @@ import {
 } from './tool-call-context';
 import { EXTENSION_NAME } from './constants';
 import { IntentDispatcher } from './tools/intent-dispatcher';
+import { isNexusAvailable } from './utils/nexus-checker';
 
 declare const Editor: any;
 
@@ -106,7 +107,14 @@ export class MCPServer {
                 }
             }
 
-            this.intentDispatcher = new IntentDispatcher(this.tools);
+            try {
+                const intentDispPath = require.resolve('./tools/intent-dispatcher');
+                delete require.cache[intentDispPath];
+                const { IntentDispatcher: FreshIntentDispatcher } = require('./tools/intent-dispatcher');
+                this.intentDispatcher = new FreshIntentDispatcher(this.tools);
+            } catch (e) {
+                this.intentDispatcher = new IntentDispatcher(this.tools);
+            }
             console.log('[MCPServer] Tools & Unified Intent Dispatcher initialized successfully');
         } catch (error) {
             console.error('[MCPServer] Error initializing tools:', error);
@@ -176,9 +184,16 @@ export class MCPServer {
                     this.toolsList = [...intentTools];
                 }
             }
+
+            const nexusActive = isNexusAvailable();
+            if (!nexusActive) {
+                this.toolsList = this.toolsList.filter(t => t.name !== 'nexus_manage');
+            }
         } else {
             // Fallback to legacy categories if dispatcher is not ready
+            const nexusActive = isNexusAvailable();
             for (const [category, toolSet] of Object.entries(this.tools)) {
+                if (category === 'nexus' && !nexusActive) continue;
                 const tools = toolSet.getTools();
                 for (const tool of tools) {
                     this.toolsList.push({
@@ -212,11 +227,14 @@ export class MCPServer {
 
         // 1. tools/list: Gemini-safe sanitized schemas without $ref
         server.server.setRequestHandler(ListToolsRequestSchema, async () => {
-            const tools = this.toolsList.map(tool => ({
-                name: tool.name,
-                description: tool.description,
-                inputSchema: sanitizeJsonSchemaForGemini(tool.inputSchema)
-            }));
+            const nexusActive = isNexusAvailable();
+            const tools = this.toolsList
+                .filter(tool => nexusActive || tool.name !== 'nexus_manage')
+                .map(tool => ({
+                    name: tool.name,
+                    description: tool.description,
+                    inputSchema: sanitizeJsonSchemaForGemini(tool.inputSchema)
+                }));
             return { tools };
         });
 
@@ -465,6 +483,21 @@ export class MCPServer {
                     activeStreamableSessions: this.streamableSessions.size,
                     version: this.getVersion()
                 }));
+            } else if ((pathname === '/reload' || pathname === '/api/reload') && (req.method === 'GET' || req.method === 'POST')) {
+                try {
+                    console.log('[MCPServer] Reloading tools dynamically...');
+                    this.initializeTools();
+                    this.setupTools();
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({
+                        success: true,
+                        message: 'MCP server tools reloaded successfully',
+                        tools: this.toolsList.length
+                    }));
+                } catch (reloadErr: any) {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: reloadErr.message }));
+                }
             } else if (pathname?.startsWith('/api/') && req.method === 'POST') {
                 await this.handleSimpleAPIRequest(req, res, pathname);
             } else if (pathname === '/api/tools' && req.method === 'GET') {
@@ -559,18 +592,10 @@ export class MCPServer {
 
         const accept = req.headers['accept'] || '';
         if (accept.includes('text/event-stream')) {
-            const newSessionId = crypto.randomUUID();
             const transport = new StreamableHTTPServerTransport({
-                sessionIdGenerator: () => newSessionId,
                 enableJsonResponse: true
             });
             const server = this.createMcpServerInstance();
-            this.streamableSessions.set(newSessionId, { transport, server, lastActive: Date.now() });
-
-            transport.onclose = () => {
-                this.streamableSessions.delete(newSessionId);
-            };
-
             await server.connect(transport);
             await transport.handleRequest(req, res);
             return;
