@@ -1,105 +1,125 @@
-# Cocos Creator MCP Server Plugin
+# Cocos Creator MCP Server Plugin (pts-cc-mcp)
 
 🌐 **English** · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Português](README.pt.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Русский](README.ru.md) · [Tiếng Việt](README.vi.md)
 
-A comprehensive MCP (Model Context Protocol) server plugin for Cocos Creator 3.8+ that lets AI assistants interact with the Cocos Creator editor through a standardized protocol. One-click installation and use — no tedious environment setup or configuration required. Tested with Claude desktop client, Claude CLI, Cursor, and Windsurf; other MCP-compatible editors work seamlessly as well.
+A comprehensive, open-source Model Context Protocol (MCP) server plugin for Cocos Creator 3.8+ that empowers AI coding assistants (Claude CLI, Claude Desktop, Cursor, Windsurf, Antigravity) to inspect, author, validate, and manipulate Cocos Creator games through a standardized protocol.
 
-**🚀 Now featuring unified tool architecture, atomic batch execution, and native animation graph support for 99% editor control!**
+**🚀 Featuring dual Streamable HTTP & SSE transport, 16 unified intent tools (231 opcodes), declarative 1-shot UI generation, offline reflection knowledge base, timeline keyframe animation authoring, and scene/asset regression snapshot diffing!**
+
+---
 
 ## 🙏 Acknowledgments & Credits
 
 This project originated as an open-source fork of [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) created by **LiDaxian**. We express our sincere gratitude and appreciation to **LiDaxian** and all community contributors for laying the foundational architecture and opening the path for AI-driven Cocos Creator development.
 
-`pts-cc-mcp` builds upon this foundation as a fully open-source, community-driven extension with:
-- **100% English Codebase** with multi-language i18n localization support
-- **In-process Atomic Batch Execution Engine** (`batch_execute` / `editor_batch_execute`)
-- **Native Animation Graph** (`.animgraph`) state machine inspection & editing
-- **Safe Prefab Session Stack** with auto-recovery eliminating scene-exit crashes
-- **Smart Recursive Asset Resolver** (`@spriteFrame`, `@texture`, raw paths, UUIDs)
-- **Spine & FastSpine** automated character rig setup
-- **TypeScript Compiler Watcher** (`compile_status`) eliminating script compilation race conditions
-
-## Open-Source Version Changelog
-
-### 🚀 Major Update v1.6.0 (Phase 1: Dual Streamable HTTP & SSE Transport)
-
-- **Dual Streamable HTTP & Server-Sent Events (SSE) Transport Engine**: Full native support for `@modelcontextprotocol/sdk` Streamable HTTP (`/mcp`) and Server-Sent Events (`/sse` & `/messages`) alongside the stateless fallback JSON-RPC endpoint. Provides isolated per-client session lifecycle management, automatic idle session cleanup, and full CORS headers for modern AI IDEs (Claude CLI, Cursor, Windsurf, VS Code).
-- **Scene Script Core Decoupling**: Verified and documented peer dependency on `pts-core` for scene-script execution (`src/_cc.js`), ensuring clean separation between MCP protocol translation and Cocos Creator engine scene manipulation.
-
-### 🚀 Major Update v1.5.4
-
-- **In-Process Atomic Batch Execution (`batch_execute` / `editor_batch_execute`)**: Run multiple tool operations in a single sequential in-process IPC transaction. Drastically reduces HTTP round-trips and token consumption, supporting `stopOnError` and automatic scene/prefab saving.
-- **Animation Graph Engine (`animgraph_manage`)**: Native inspection and modification of `.animgraph` files. Inspect state machines, states, transitions, and parameters; attach, update, or remove `StateMachineComponent`s; and bulk migrate component class types with automatic asset database synchronization.
-- **Prefab Session Stack & Safe Recovery**: Tracks active scene URL/UUID on `enter`, auto-restores previous scene on `exit`, and searches project scenes if missing — completely eliminating `"Target scene does not exist"` crashes. Includes `atomic_edit` for seamless enter $\to$ edit $\to$ save $\to$ exit cycles.
-- **Smart Asset & Sub-Asset Resolver (`asset_query(action="resolve")`)**: Automatically resolves raw paths, UUIDs, and sub-assets (`@spriteFrame` $\to$ `@f9941`, `@texture` $\to$ `@6c48a`). Fully integrated into `set_component_property` and `update_component` for deep automatic resolution.
-- **Spine & FastSpine Setup Helper (`spine_setup`)**: Rapid one-call character rig initialization. Attaches `FastSpine` or `sp.Skeleton`, binds skeleton data asset, configures default animation, loop mode, and synchronizes UITransform.
-- **Compiler Watcher (`compile_status`) & Defensive Defaults**: Monitor and await Cocos Creator TypeScript/JavaScript compilation completion to eliminate race conditions after editing scripts. Added defensive defaults across debug and server tools with clear guidance on unknown actions.
-- **100% English Codebase & Full i18n Architecture**: Standardized all extension source code, comments, error messages, and logs to professional English with seamless multi-language i18n localization support.
+`pts-cc-mcp` builds upon this foundation as a community-driven, 100% open-source extension, replacing all closed-source/commercial features with superior open-source equivalents.
 
 ---
 
-## Tool System & Opcodes
+## 🚀 Version 1.6.0 Changelog: The Unified Pro Architecture
 
-- All tools are named using a "category_operation" convention, with parameters following a unified schema and support for switching between multiple opcodes (`action`), greatly improving flexibility and extensibility.
-- Comprehensive coverage across scenes, nodes, components, prefabs, assets, animation graphs, batch transactions, projects, debugging, preferences, server status, and message broadcasting.
-- Example tool call:
+### 1. Dual Streamable HTTP & Server-Sent Events (SSE) Transport (Phase 1)
+- Full native support for `@modelcontextprotocol/sdk` Streamable HTTP (`/mcp`) and Server-Sent Events (`/sse` & `/messages`) on port `3121`.
+- Per-client isolated session management, keep-alive heartbeat, and CORS headers for modern AI clients.
 
-```json
-{
-  "tool": "batch_execute",
-  "arguments": {
-    "operations": [
-      {
-        "tool": "node_node_transform",
-        "args": { "nodeUuid": "node-uuid", "position": { "x": 100, "y": 50 } }
-      },
-      {
-        "tool": "component_set_component_property",
-        "args": {
-          "nodeUuid": "node-uuid",
-          "componentType": "cc.Sprite",
-          "property": "spriteFrame",
-          "propertyType": "spriteFrame",
-          "value": "db://assets/textures/hero.png@spriteFrame"
-        }
-      }
-    ],
-    "autoSave": true
-  }
-}
-```
+### 2. Intent-Level Unified Opcode Architecture (Phase 2)
+- Replaced 50+ scattered schemas with **16 unified intent tools** covering 231 operations (`action` opcode dispatch).
+- Reduces schema token consumption by over 70% in LLM context windows while maintaining backwards compatibility with legacy tool calls.
+
+### 3. Declarative One-Shot UI & Scene Builder (Phase 3)
+- `ui_builder`: Construct complex UI graphs (`build_tree`, `create_dialog`, `create_button`, `create_list`) with automatic `UITransform` creation, constraint solving (Widget anchors, Layout margins), and automatic rollback snapshotting on error.
+
+### 4. Embedded Cocos Creator 3.8 Reflection Knowledge Base (Phase 4)
+- `knowledge_query`: In-memory architectural rules and `@property` dictionaries for builtin 2D/3D components (`cc.Sprite`, `cc.Label`, `cc.Widget`, `cc.Layout`, `sp.Skeleton`), design resolution guides, and coordinate conversion formulas.
+- Automated `AGENTS.md` verification and documentation generator (`get_mcp_guide`, `sync_agents_doc`).
+
+### 5. Timeline Animation & Keyframe Curve Editor (Phase 5)
+- `anim_manage`: Direct `.anim` (`cc.AnimationClip`) track authoring with Cubic Bezier / Linear / Constant curve interpolation.
+- Animation event triggers, quick motion presets (`bounce_pop`, `fade_in`, `fade_out`, `shake`), and automated multi-take FBX animation take slicing.
+
+### 6. Scene & Asset Diagnostics & Snapshot Diffing (Phase 6)
+- `validation_manage`: Sibling name collision detection, missing `UITransform` diagnostics, and deep recursive asset scanner checking scene component `__uuid__` references against `asset-db`.
+- SHA-256 scene state snapshotting (`capture_snapshot`) and visual Markdown regression diff tables (`diff_snapshot`).
 
 ---
 
-## Main Feature Categories
+## 🛠️ Unified Intent API Cheatsheet (16 Tools)
 
-- **batch_execute / editor_batch_execute**: Atomic batch execution engine running multiple tool operations in a single IPC transaction
-- **animgraph_manage**: Native `.animgraph` inspection, state machine transitions, and component CRUD
-- **scene_management / scene_hierarchy**: Scene lifecycle (get/open/save/create/close) and hierarchy trees
-- **node_query / node_lifecycle / node_transform**: Node search, creation, deletion, hierarchy, and transforms
-- **component_manage / set_component_property / spine_setup**: Component lifecycle, property setter, and FastSpine rig setup
-- **prefab_browse / prefab_lifecycle / prefab_instance / prefab_edit**: Prefab management, instantiation, session stack, and atomic editing
-- **asset_manage / asset_analyze / asset_query**: Asset CRUD, dependency tracing, and smart sub-asset resolution
-- **debug_console / debug_logs / compile_status**: Console monitoring, project log search, and TS compiler watcher
-- **project_manage / project_build_system**: Project execution, build panel control, and preview server
-- **preferences_manage**: Editor preferences management
-- **server_information / server_connectivity**: Server IP list, port inspection, and connectivity diagnostics
-- **broadcast_log_management / broadcast_listener_management**: Editor event monitoring and broadcasting
+| Intent Tool | Key Arguments | Purpose & Best Practice |
+| :--- | :--- | :--- |
+| **`scene_manage`** | `action: "get_current" \| "hierarchy" \| "inspect" \| "open" \| "save" \| "create"`, `includeComponents: true` | Scene lifecycle, full tree inspection, and scene scripts. |
+| **`node_manage`** | `action: "query" \| "create" \| "delete" \| "duplicate" \| "transform" \| "reparent"`, `nodeUuid`, `position`, `size`, `queryType` | Universal node search, creation, transform, and hierarchy manipulation. |
+| **`component_manage`** | `action: "add" \| "remove" \| "get" \| "update" \| "bind_event" \| "query_class_info"`, `nodeUuid`, `componentType`, `properties` | Add/remove components, deep property updates with auto-save, click binding, and @ccclass reflection. |
+| **`prefab_manage`** | `action: "list" \| "info" \| "validate" \| "enter" \| "exit" \| "save" \| "instantiate" \| "atomic_edit"`, `prefabPath`, `nodeUuid` | Complete prefab lifecycle, non-destructive editing sessions, and atomic batch edits. |
+| **`ui_builder`** | `action: "build_tree" \| "create_dialog" \| "create_button" \| "create_list"`, `tree`, `parent` | Declarative 1-shot UI generation with auto-UITransform, Widget constraints, and Layouts. |
+| **`anim_manage`** | `action: "clip_inspect" \| "clip_create" \| "clip_add_track" \| "clip_add_keyframe" \| "clip_apply_preset" \| "slice_fbx" \| "graph_inspect"`, `animPath`, `property`, `time`, `value` | Timeline AnimationClip editing, property curves, easing modes, animation events, presets, FBX slicing, and AnimGraph state machines. |
+| **`asset_manage`** | `action: "query" \| "resolve" \| "import" \| "delete" \| "dependencies"`, `folder`, `assetPath`, `assets` | Asset discovery, dependency inspection, and smart sub-asset resolution (`@spriteFrame`, `@texture`). |
+| **`knowledge_query`** | `action: "query_component" \| "query_rules" \| "query_layout_patterns" \| "get_mcp_guide" \| "list_topics"`, `className`, `topic` | Offline architecture reference for components, coordinates, rules, and live MCP documentation. |
+| **`validation_manage`**| `action: "check_scene" \| "check_assets" \| "check_viewport" \| "capture_snapshot" \| "diff_snapshot" \| "list_snapshots" \| "restore_snapshot"`, `threshold`, `tag`, `snapshotId` | Automated audit for missing UITransforms, corrupt assets, out-of-bounds nodes, and visual snapshot regression diffing. |
+| **`batch_execute`** | `operations: [{ tool, args }]`, `autoSave: true` | In-process atomic batch execution running multiple operations in a single IPC transaction. |
+| **`project_manage`** | `action: "get_info" \| "build" \| "run" \| "compile_watch"` | Build settings, preview server control, and TypeScript compilation watcher. |
+| **`scene_view_control`**| `action: "camera_focus" \| "camera_view" \| "grid_toggle" \| "gizmo_mode"`, `nodeUuid`, `viewMode` | Viewport camera manipulation and editor overlays. |
+| **`spine_manage`** | `action: "setup_rig" \| "query_animations" \| "set_animation"`, `nodeUuid`, `spineAssetPath`, `defaultAnimation` | Rapid one-call Spine skeleton or FastSpine rig setup. |
+| **`debug_manage`** | `action: "get_logs" \| "search_logs" \| "get_stats"` | Editor console monitoring and performance telemetry. |
+| **`preferences_manage`**| `action: "get" \| "set" \| "backup"`, `key`, `value` | Editor preferences configuration. |
+| **`broadcast_manage`** | `action: "subscribe" \| "emit" \| "history"`, `channel`, `message` | Editor event monitoring and broadcasting. |
 
 ---
 
-## Quick Start
+## 📖 Standard MCP Workflows
 
-`pts-cc-mcp` provides dual transport support: **Streamable HTTP** (`/mcp`) and **Server-Sent Events (SSE)** (`/sse`).
+### A. Inspecting Scene or Prefab Graph
+* Use `scene_manage(action="inspect")` to inspect scene hierarchy, components, and properties in formatted JSON or Markdown trees.
+* Use `scene_manage(action="hierarchy", includeComponents=true)` to list live nodes in the active scene or open prefab.
+
+### B. Modifying Components in Active Scene
+* Use `component_manage(action="update")` for deep property updates (`config.sid`, `config.data`), nested `@ccclass` object instantiation, and asset arrays (`onUpdates`, `onChanged`).
+* Use `scene_manage(action="save")` to persist scene changes.
+
+### C. Modifying Components / Nodes in Prefabs
+* **If Prefab is currently open / being inspected:**
+  1. `node_manage(action="query")` to locate target node.
+  2. `component_manage(action="add")` (to attach new scripts) or `component_manage(action="update")` (to set data).
+  3. `prefab_manage(action="save")` to save.
+* **If Prefab is in background (not open):**
+  1. `prefab_manage(action="enter", prefabPath="db://assets/...")`
+  2. `scene_manage(action="hierarchy")` / `node_manage(action="query")` to locate target node.
+  3. `component_manage(action="update")` to apply changes.
+  4. `prefab_manage(action="save")`
+  5. `prefab_manage(action="exit")`
+* Or use atomic edit: `prefab_manage(action="atomic_edit", prefabPath="db://assets/...", operations=[...])`
+
+### D. Class Reflection & Types
+* Use `component_manage(action="query_class_info")` to inspect `@ccclass` reflection attributes, default values, and `@property` metadata before assigning values.
+
+### E. Declarative UI Generation
+* Use `ui_builder(action="build_tree", parent="Canvas", tree={...})` to construct complete UI hierarchies (Panels, Buttons, Labels, Sprites, ScrollViews) with auto-computed UITransforms and Widget constraints in a single atomic call.
+
+### F. Timeline Keyframe Animation & FBX Slicing
+* Author `.anim` clips with property curves: `anim_manage(action="clip_create", animPath="db://assets/anims/fade.anim", tracks=[...])`.
+* Apply motion presets: `anim_manage(action="clip_apply_preset", animPath="db://assets/anims/btn_pop.anim", preset="bounce_pop")`.
+* Slice multi-take FBX models: `anim_manage(action="slice_fbx", fbxPath="db://assets/models/char.fbx", takes=[...])`.
+
+### G. Scene & Asset Diagnostics & Regression Diffing
+* Capture baseline scene snapshot before modifications: `validation_manage(action="capture_snapshot", tag="PreEdit")`.
+* Compare scene against snapshot after edits: `validation_manage(action="diff_snapshot")`.
+* Audit scene hierarchy for layout bugs: `validation_manage(action="check_scene")`.
+* Scan project and scene for broken GUID references: `validation_manage(action="check_assets")`.
+
+---
+
+## ⚡ Quick Start
+
+`pts-cc-mcp` defaults to port `3121` with dual transport support: **Streamable HTTP** (`/mcp`) and **Server-Sent Events (SSE)** (`/sse`).
 
 ### 1. Claude CLI Configuration
 
 ```bash
 # Streamable HTTP (Default)
-claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
+claude mcp add --transport http cocos-creator http://127.0.0.1:3121/mcp
 
 # Or via Server-Sent Events (SSE)
-claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
+claude mcp add --transport sse cocos-creator http://127.0.0.1:3121/sse
 ```
 
 ### 2. Claude Desktop Configuration
@@ -109,7 +129,7 @@ claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
   "mcpServers": {
     "cocos-creator": {
       "type": "http",
-      "url": "http://127.0.0.1:3000/mcp"
+      "url": "http://127.0.0.1:3121/mcp"
     }
   }
 }
@@ -122,7 +142,7 @@ claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
   "mcpServers": {
     "cocos-creator": {
       "type": "sse",
-      "url": "http://127.0.0.1:3000/sse"
+      "url": "http://127.0.0.1:3121/sse"
     }
   }
 }
@@ -136,13 +156,11 @@ In Cursor or Windsurf MCP Settings (`.cursor/mcp.json`):
 {
   "mcpServers": {
     "cocos-creator": {
-      "url": "http://127.0.0.1:3000/mcp"
+      "url": "http://127.0.0.1:3121/mcp"
     }
   }
 }
 ```
-
-*(You may also specify `"url": "http://127.0.0.1:3000/sse"` if preferred).*
 
 ---
 
@@ -155,17 +173,13 @@ In Cursor or Windsurf MCP Settings (`.cursor/mcp.json`):
 >
 > `pts-cc-mcp` executes scene commands by calling `Editor.Message.request('scene', 'execute-scene-script', { name: 'pts-core', method: '...' })`. The scene script (`src/_cc.js`) is hosted directly inside `pts-core`.  
 >
-> Without `pts-core`, tools that require the live scene runtime (such as `component_*`, `node_node_transform`, `scene_inspect_scene`, `game_*`, and `component_query_class_info`) cannot interact with scene nodes.
+> Without `pts-core`, tools that require the live scene runtime (such as `component_*`, `node_manage`, `scene_manage`, `ui_builder`, and `validation_manage`) cannot interact with scene nodes.
 
-> **Before installing for the first time or upgrading:**  
-> Please delete `mcp-server.json` and `tool-manager.json` under your project's `settings/` directory, otherwise tool list caching may cause display issues!  
-> File paths: `<Project>/settings/mcp-server.json` and `<Project>/settings/tool-manager.json`.  
-> Reopening the extension panel after deleting these two files will re-sync all tools cleanly.
+---
 
-## Installation
+## Installation & Setup
 
 ### 1. Place Extension Files
-
 Ensure BOTH `pts-core` and `pts-cc-mcp` are placed inside your Cocos Creator project's `extensions/` directory:
 
 ```
@@ -174,19 +188,15 @@ YourProject/
 ├── extensions/
 │   ├── pts-core/                  <- REQUIRED: Core engine & scene script runtime (_cc.js)
 │   │   ├── src/_cc.js
-│   │   ├── package.json
-│   │   └── ...
+│   │   └── package.json
 │   └── pts-cc-mcp/                <- MCP Server & Tool provider
 │       ├── source/
 │       ├── dist/
-│       ├── package.json
-│       └── ...
-├── settings/
-└── ...
+│       └── package.json
+└── settings/
 ```
 
 ### 2. Install & Build Extensions
-
 ```bash
 # 1. Setup pts-core (if building from source)
 cd extensions/pts-core
@@ -199,68 +209,53 @@ npm install
 npm run build
 ```
 
-### 3. Enable Plugins in Cocos Creator
-
+### 3. Enable Extension in Cocos Creator
 1. Restart Cocos Creator or reload Extension Manager (**Extensions > Extension Manager**).
 2. Verify that both **pts-core** and **pts-cc-mcp** are enabled.
 3. Click `Extensions > pTS MCP Server` to open the control panel.
-4. The server runs on port `3000` by default (configurable in the panel).
+4. The server runs on port `3121` by default (configurable in the panel).
 
 ---
 
-## Development
+## Project Structure
 
-### Project Structure
 ```
 pts-cc-mcp/
 ├── source/                    # TypeScript source files
-│   ├── main.ts               # Plugin entry point
-│   ├── mcp-server.ts         # MCP server implementation
-│   ├── settings.ts           # Settings management
+│   ├── main.ts               # Plugin entry point & bootstrap check
+│   ├── mcp-server.ts         # Streamable HTTP & SSE transport layer
+│   ├── settings.ts           # Settings & configuration management
 │   ├── types/                # TypeScript type definitions
-│   ├── utils/                # Utilities (asset resolver, schema compat, json utils)
-│   ├── tools/                # Tool implementations
-│   │   ├── animgraph-tools.ts
-│   │   ├── batch-tools.ts
-│   │   ├── scene-tools.ts
-│   │   ├── node-tools.ts
-│   │   ├── component-tools.ts
-│   │   ├── prefab-tools.ts
-│   │   ├── project-tools.ts
-│   │   ├── debug-tools.ts
-│   │   ├── preferences-tools.ts
-│   │   ├── server-tools.ts
-│   │   ├── broadcast-tools.ts
-│   │   ├── scene-view-tools.ts
-│   │   ├── reference-image-tools.ts
-│   │   └── asset-advanced-tools.ts
-│   ├── panels/               # UI panel implementation
-│   └── test/                 # Test files
+│   ├── utils/                # Utilities
+│   │   ├── agents-doc-generator.ts # AGENTS.md template & sync generator
+│   │   ├── asset-resolver.ts       # Smart sub-asset UUID resolver
+│   │   ├── json-utils.ts           # Defensive JSON parsing & repair
+│   │   └── i18n.ts                 # Multi-language translation engine
+│   ├── tools/                # Subsystem & Unified Tool implementations
+│   │   ├── intent-dispatcher.ts    # 16 Intent APIs & Opcode Router
+│   │   ├── ui-builder-tools.ts     # Declarative 1-shot UI builder
+│   │   ├── knowledge-tools.ts      # Offline reflection knowledge base
+│   │   ├── animation-tools.ts      # AnimationClip & FBX slicing editor
+│   │   ├── validation-tools.ts     # Scene diagnostics & regression diffing
+│   │   ├── batch-tools.ts          # Atomic batch execution engine
+│   │   ├── scene-tools.ts          # Scene lifecycle management
+│   │   ├── node-tools.ts           # Node transform & tree operations
+│   │   ├── component-tools.ts      # Component reflection & property updater
+│   │   ├── prefab-tools.ts         # Prefab session stack & atomic edit
+│   │   ├── asset-advanced-tools.ts # Asset database search & resolution
+│   │   ├── project-tools.ts        # Build & preview execution
+│   │   ├── debug-tools.ts          # Console logs & TS compiler watcher
+│   │   └── preferences-tools.ts    # User settings management
+│   └── panels/               # Vue 3 UI panel implementation with Tool Tester
 ├── dist/                     # Compiled JavaScript output
-├── static/                   # Static assets (icons, etc.)
-├── i18n/                     # Internationalization files
-├── package.json              # Plugin configuration
-└── tsconfig.json             # TypeScript configuration
-```
-
-### Building from Source
-
-```bash
-# Watch mode for development
-npm run watch
-
-# Production build
-npm run build
+├── static/                   # Static assets (icons, styles, templates)
+├── i18n/                     # Internationalization dictionaries
+├── package.json              # Extension manifest & contributions
+└── tsconfig.json             # TypeScript build configuration
 ```
 
 ---
 
-## System Requirements
-
-- Cocos Creator 3.8.6 or higher
-- Node.js (bundled with Cocos Creator)
-- TypeScript (installed as dev dependency)
-
 ## License
 
-This plugin is designed for Cocos Creator projects with full source code included for learning and development.
+This plugin is open-source under the MIT License and designed for Cocos Creator game development.

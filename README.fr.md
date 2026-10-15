@@ -1,105 +1,125 @@
-# Plugin serveur MCP pour Cocos Creator
+# Plugin serveur MCP pour Cocos Creator (pts-cc-mcp)
 
 🌐 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Português](README.pt.md) · **Français** · [Deutsch](README.de.md) · [Русский](README.ru.md) · [Tiếng Việt](README.vi.md)
 
-Un plugin serveur MCP (Model Context Protocol) complet pour Cocos Creator 3.8+ permettant aux assistants IA d'interagir avec l'éditeur Cocos Creator via un protocole standardisé. Installation et utilisation en un clic — aucune configuration d'environnement fastidieuse requise. Testé avec le client de bureau Claude, Claude CLI, Cursor et Windsurf ; les autres éditeurs compatibles MCP fonctionnent également parfaitement.
+Un plugin de serveur MCP (Model Context Protocol) complet et open-source pour Cocos Creator 3.8+ permettant aux assistants de codage IA (Claude CLI, Claude Desktop, Cursor, Windsurf, Antigravity) d'inspecter, créer, valider et manipuler des jeux Cocos Creator via un protocole standardisé.
 
-**🚀 Intègre désormais une architecture d'outils unifiée, l'exécution atomique par lot et la prise en charge native des Animation Graphs pour un contrôle de l'éditeur à 99 % !**
+**🚀 Doté d'un double transport Streamable HTTP et SSE, de 16 outils d'intention unifiés (231 opcodes), d'une génération déclarative d'UI en une seule passe, d'une base de connaissances de réflexion hors ligne, de l'édition d'animations par images clés sur timeline et de la comparaison différentielle d'instantanés pour la régression des scènes et ressources !**
+
+---
 
 ## 🙏 Remerciements et crédits
 
 Ce projet est à l'origine un fork open source de [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) créé par **LiDaxian**. Nous exprimons notre sincère gratitude et reconnaissance à **LiDaxian** ainsi qu'à tous les contributeurs de la communauté pour avoir posé les bases architecturales et ouvert la voie au développement Cocos Creator assisté par l'IA.
 
-`pts-cc-mcp` s'appuie sur ces fondations en tant qu'extension entièrement open source portée par la communauté avec :
-- **Code source 100 % en anglais** avec prise en charge complète de la localisation multilingue i18n
-- **Moteur d'exécution atomique par lot in-process** (`batch_execute` / `editor_batch_execute`)
-- **Inspection et modification natives des machines d'états d'Animation Graph** (`.animgraph`)
-- **Pile de sessions de prefab sécurisée** avec récupération automatique éliminant les plantages à la sortie de scène
-- **Résolveur récursif intelligent de ressources** (`@spriteFrame`, `@texture`, chemins bruts, UUIDs)
-- **Configuration automatisée de rigs de personnages pour Spine et FastSpine**
-- **Surveillance du compilateur TypeScript** (`compile_status`) éliminant les conditions de concurrence lors de la compilation des scripts
-
-## Journal des modifications de la version open source
-
-### 🚀 Mise à jour majeure v1.6.0 (Phase 1 : Double transport Streamable HTTP et SSE)
-
-- **Moteur de transport double Streamable HTTP et Server-Sent Events (SSE)** : Prise en charge native intégrale de `@modelcontextprotocol/sdk` pour Streamable HTTP (`/mcp`) et Server-Sent Events (`/sse` & `/messages`), aux côtés de l'endpoint direct JSON-RPC de secours sans état. Offre une gestion isolée du cycle de vie des sessions par client, un nettoyage automatique des sessions inactives et des en-têtes CORS complets pour les IDEs IA modernes (Claude CLI, Cursor, Windsurf, VS Code).
-- **Découplage du cœur de scripts de scène** : Dépendance de pairs vérifiée et documentée envers `pts-core` pour l'exécution des scripts de scène (`src/_cc.js`), garantissant une séparation nette entre la traduction du protocole MCP et la manipulation de la scène dans le moteur Cocos Creator.
-
-### 🚀 Mise à jour majeure v1.5.4
-
-- **Exécution atomique par lot in-process (`batch_execute` / `editor_batch_execute`)** : Exécutez plusieurs opérations d'outils en une seule transaction séquentielle IPC in-process. Réduit considérablement les allers-retours HTTP et la consommation de tokens, avec prise en charge de `stopOnError` et sauvegarde automatique de la scène/du prefab.
-- **Moteur d'Animation Graph (`animgraph_manage`)** : Inspection et modification natives des fichiers `.animgraph`. Inspectez les machines d'états, les états, les transitions et les paramètres ; attachez, mettez à jour ou supprimez des `StateMachineComponent`s ; et migrez en bloc les types de classes de composants avec synchronisation automatique de la base de données de ressources.
-- **Pile de sessions de prefab et récupération sécurisée** : Enregistre l'URL/UUID de la scène active lors de l'entrée (`enter`), restaure automatiquement la scène précédente lors de la sortie (`exit`) et recherche les scènes valides du projet en cas d'absence — éliminant totalement les plantages `"Target scene does not exist"`. Inclut `atomic_edit` pour des cycles fluides entrée $\to$ édition $\to$ sauvegarde $\to$ sortie.
-- **Résolveur intelligent de ressources et de sous-ressources (`asset_query(action="resolve")`)** : Résout automatiquement les chemins bruts, les UUIDs et les sous-ressources (`@spriteFrame` $\to$ `@f9941`, `@texture` $\to$ `@6c48a`). Entièrement intégré à `set_component_property` et `update_component` pour une résolution automatique récursive profonde.
-- **Assistant de configuration Spine et FastSpine (`spine_setup`)** : Initialisation rapide du rig de personnage en un seul appel. Attache `FastSpine` ou `sp.Skeleton`, lie la ressource de données de squelette, configure l'animation par défaut, le mode de boucle et synchronise le UITransform.
-- **Surveillance de compilation (`compile_status`) et valeurs par défaut défensives** : Surveille et attend la fin de la compilation TypeScript/JavaScript de Cocos Creator pour éliminer les conditions de concurrence après l'édition de scripts. Ajout de valeurs par défaut défensives sur l'ensemble des outils de débogage et de serveur, avec des instructions claires en cas d'actions inconnues.
-- **Base de code 100 % en anglais et architecture complète i18n** : Standardisation de l'intégralité du code source de l'extension, des commentaires, des messages d'erreur et des journaux en anglais professionnel, avec prise en charge complète de la localisation multilingue i18n.
+`pts-cc-mcp` s'appuie sur ces fondations en tant qu'extension entièrement open source portée par la communauté, remplaçant toutes les fonctionnalités propriétaires ou commerciales par des équivalents open-source supérieurs.
 
 ---
 
-## Système d'outils et opcodes
+## 🚀 Journal des modifications de la version 1.6.0 : L'architecture Pro unifiée
 
-- Tous les outils sont nommés selon la convention « catégorie_opération », avec des paramètres conformes à un schéma unifié et la prise en charge du basculement entre plusieurs opcodes (`action`), améliorant grandement la flexibilité et l'extensibilité.
-- Couverture complète des scènes, nœuds, composants, prefabs, ressources, graphes d'animation, transactions par lot, projets, débogage, préférences, état du serveur et diffusion de messages.
-- Exemple d'appel d'outil :
+### 1. Double transport Streamable HTTP et Server-Sent Events (SSE) (Phase 1)
+- Prise en charge native intégrale de Streamable HTTP (`/mcp`) et Server-Sent Events (`/sse` & `/messages`) de `@modelcontextprotocol/sdk` sur le port `3121`.
+- Gestion isolée du cycle de vie des sessions par client, pulsation d'activité (heartbeat keep-alive) et en-têtes CORS pour les clients IA modernes.
 
-```json
-{
-  "tool": "batch_execute",
-  "arguments": {
-    "operations": [
-      {
-        "tool": "node_node_transform",
-        "args": { "nodeUuid": "node-uuid", "position": { "x": 100, "y": 50 } }
-      },
-      {
-        "tool": "component_set_component_property",
-        "args": {
-          "nodeUuid": "node-uuid",
-          "componentType": "cc.Sprite",
-          "property": "spriteFrame",
-          "propertyType": "spriteFrame",
-          "value": "db://assets/textures/hero.png@spriteFrame"
-        }
-      }
-    ],
-    "autoSave": true
-  }
-}
-```
+### 2. Architecture d'opcodes unifiée au niveau de l'intention (Phase 2)
+- Remplacement de plus de 50 schémas dispersés par **16 outils d'intention unifiés** couvrant 231 opérations (dispatch d'opcodes via `action`).
+- Réduit la consommation de tokens de schéma de plus de 70 % dans la fenêtre de contexte des LLM, tout en maintenant la rétrocompatibilité avec les anciens appels d'outils.
+
+### 3. Générateur déclaratif d'UI et de scènes en une seule passe (Phase 3)
+- `ui_builder` : Construction de graphes d'UI complexes (`build_tree`, `create_dialog`, `create_button`, `create_list`) avec création automatique d'un `UITransform`, résolution des contraintes (ancres de Widget, marges de Layout) et instantanés de restauration automatique en cas d'erreur.
+
+### 4. Base de connaissances de réflexion intégrée de Cocos Creator 3.8 (Phase 4)
+- `knowledge_query` : Règles d'architecture en mémoire et dictionnaires `@property` pour les composants natifs 2D/3D (`cc.Sprite`, `cc.Label`, `cc.Widget`, `cc.Layout`, `sp.Skeleton`), guides de résolution de conception et formules de conversion de coordonnées.
+- Vérification automatisée d'`AGENTS.md` et générateur de documentation (`get_mcp_guide`, `sync_agents_doc`).
+
+### 5. Éditeur d'animation timeline et de courbes d'images clés (Phase 5)
+- `anim_manage` : Création directe de pistes `.anim` (`cc.AnimationClip`) avec interpolation de courbes de Bézier cubiques, linéaires et constantes.
+- Déclencheurs d'événements d'animation, préréglages de mouvement rapide (`bounce_pop`, `fade_in`, `fade_out`, `shake`) et découpage automatisé des prises d'animation FBX multi-takes.
+
+### 6. Diagnostic de scènes/ressources et comparaison différentielle d'instantanés (Phase 6)
+- `validation_manage` : Détection des collisions de noms entre nœuds frères, diagnostic des `UITransform` manquants et analyse récursive approfondie des ressources vérifiant les références `__uuid__` des composants de scène par rapport à l'`asset-db`.
+- Instantanés d'état de scène hachés en SHA-256 (`capture_snapshot`) et tableaux comparatifs visuels de régression en Markdown (`diff_snapshot`).
 
 ---
 
-## Principales catégories de fonctionnalités
+## 🛠️ Tableau de référence rapide des 16 outils d'intention
 
-- **batch_execute / editor_batch_execute** : Moteur d'exécution atomique par lot exécutant plusieurs opérations d'outils en une seule transaction IPC
-- **animgraph_manage** : Inspection native de `.animgraph`, transitions de machines d'états et CRUD de composants
-- **scene_management / scene_hierarchy** : Cycle de vie des scènes (obtenir/ouvrir/sauvegarder/créer/fermer) et arbres hiérarchiques
-- **node_query / node_lifecycle / node_transform** : Recherche, création, suppression, hiérarchie et transformations de nœuds
-- **component_manage / set_component_property / spine_setup** : Cycle de vie des composants, définition stricte des propriétés et configuration de rigs FastSpine
-- **prefab_browse / prefab_lifecycle / prefab_instance / prefab_edit** : Gestion des prefabs, instanciation, pile de sessions et édition atomique
-- **asset_manage / asset_analyze / asset_query** : CRUD des ressources, suivi des dépendances et résolution intelligente des sous-ressources
-- **debug_console / debug_logs / compile_status** : Surveillance de la console, recherche dans les journaux du projet et observateur du compilateur TS
-- **project_manage / project_build_system** : Exécution du projet, contrôle du panneau de build et serveur de prévisualisation
-- **preferences_manage** : Gestion des préférences de l'éditeur
-- **server_information / server_connectivity** : Liste des IP du serveur, inspection des ports et diagnostic de connectivité
-- **broadcast_log_management / broadcast_listener_management** : Surveillance des événements de l'éditeur et diffusion de messages
+| Outil d'intention | Arguments clés | Rôle et bonnes pratiques |
+| :--- | :--- | :--- |
+| **`scene_manage`** | `action: "get_current" \| "hierarchy" \| "inspect" \| "open" \| "save" \| "create"`, `includeComponents: true` | Cycle de vie de la scène, inspection complète de l'arbre et scripts de scène. |
+| **`node_manage`** | `action: "query" \| "create" \| "delete" \| "duplicate" \| "transform" \| "reparent"`, `nodeUuid`, `position`, `size`, `queryType` | Recherche universelle de nœuds, création, transformation et manipulation de la hiérarchie. |
+| **`component_manage`** | `action: "add" \| "remove" \| "get" \| "update" \| "bind_event" \| "query_class_info"`, `nodeUuid`, `componentType`, `properties` | Ajout/suppression de composants, mise à jour en profondeur des propriétés avec sauvegarde automatique, liaison d'événements de clic et réflexion @ccclass. |
+| **`prefab_manage`** | `action: "list" \| "info" \| "validate" \| "enter" \| "exit" \| "save" \| "instantiate" \| "atomic_edit"`, `prefabPath`, `nodeUuid` | Cycle de vie complet des prefabs, sessions d'édition non destructives et éditions atomiques par lot. |
+| **`ui_builder`** | `action: "build_tree" \| "create_dialog" \| "create_button" \| "create_list"`, `tree`, `parent` | Génération déclarative d'UI en 1 passe avec auto-UITransform, contraintes Widget et Layouts. |
+| **`anim_manage`** | `action: "clip_inspect" \| "clip_create" \| "clip_add_track" \| "clip_add_keyframe" \| "clip_apply_preset" \| "slice_fbx" \| "graph_inspect"`, `animPath`, `property`, `time`, `value` | Édition d'AnimationClip de timeline, courbes de propriétés, modes d'interpolation (easing), événements d'animation, préréglages, découpage de FBX et machines d'états AnimGraph. |
+| **`asset_manage`** | `action: "query" \| "resolve" \| "import" \| "delete" \| "dependencies"`, `folder`, `assetPath`, `assets` | Découverte de ressources, inspection des dépendances et résolution intelligente des sous-ressources (`@spriteFrame`, `@texture`). |
+| **`knowledge_query`** | `action: "query_component" \| "query_rules" \| "query_layout_patterns" \| "get_mcp_guide" \| "list_topics"`, `className`, `topic` | Référence architecturale hors ligne pour les composants, les coordonnées, les règles et documentation MCP en direct. |
+| **`validation_manage`**| `action: "check_scene" \| "check_assets" \| "check_viewport" \| "capture_snapshot" \| "diff_snapshot" \| "list_snapshots" \| "restore_snapshot"`, `threshold`, `tag`, `snapshotId` | Audit automatisé des UITransforms manquants, ressources corrompues, nœuds hors limites et comparaison visuelle de régression d'instantanés. |
+| **`batch_execute`** | `operations: [{ tool, args }]`, `autoSave: true` | Exécution atomique par lot in-process de plusieurs opérations dans une seule transaction IPC. |
+| **`project_manage`** | `action: "get_info" \| "build" \| "run" \| "compile_watch"` | Paramètres de build, contrôle du serveur de prévisualisation et surveillance de compilation TypeScript. |
+| **`scene_view_control`**| `action: "camera_focus" \| "camera_view" \| "grid_toggle" \| "gizmo_mode"`, `nodeUuid`, `viewMode` | Manipulation de la caméra de vue d'éditeur et superpositions. |
+| **`spine_manage`** | `action: "setup_rig" \| "query_animations" \| "set_animation"`, `nodeUuid`, `spineAssetPath`, `defaultAnimation` | Configuration rapide de rigs de squelettes Spine ou FastSpine en un seul appel. |
+| **`debug_manage`** | `action: "get_logs" \| "search_logs" \| "get_stats"` | Surveillance de la console de l'éditeur et télémétrie des performances. |
+| **`preferences_manage`**| `action: "get" \| "set" \| "backup"`, `key`, `value` | Configuration des préférences de l'éditeur. |
+| **`broadcast_manage`** | `action: "subscribe" \| "emit" \| "history"`, `channel`, `message` | Surveillance des événements de l'éditeur et diffusion. |
 
 ---
 
-## Démarrage rapide
+## 📖 Flux de travail standards de MCP
 
-`pts-cc-mcp` fournit une prise en charge de transport double : **Streamable HTTP** (`/mcp`) et **Server-Sent Events (SSE)** (`/sse`).
+### A. Inspection du graphe de scène ou prefab
+* Utilisez `scene_manage(action="inspect")` pour inspecter la hiérarchie de la scène, les composants et les propriétés sous forme d'arbres JSON ou Markdown formatés.
+* Utilisez `scene_manage(action="hierarchy", includeComponents=true)` pour lister les nœuds actifs dans la scène en direct ou le prefab ouvert.
+
+### B. Modification de composants dans la scène active
+* Utilisez `component_manage(action="update")` pour des mises à jour approfondies de propriétés (`config.sid`, `config.data`), l'instanciation d'objets `@ccclass` imbriqués et des tableaux de ressources (`onUpdates`, `onChanged`).
+* Utilisez `scene_manage(action="save")` pour persister les modifications de la scène.
+
+### C. Modification de composants / nœuds dans les prefabs
+* **Si le prefab est actuellement ouvert / en cours d'inspection :**
+  1. `node_manage(action="query")` pour localiser le nœud cible.
+  2. `component_manage(action="add")` (pour attacher de nouveaux scripts) ou `component_manage(action="update")` (pour définir des données).
+  3. `prefab_manage(action="save")` pour enregistrer.
+* **Si le prefab est en arrière-plan (non ouvert) :**
+  1. `prefab_manage(action="enter", prefabPath="db://assets/...")`
+  2. `scene_manage(action="hierarchy")` / `node_manage(action="query")` pour localiser le nœud cible.
+  3. `component_manage(action="update")` pour appliquer les modifications.
+  4. `prefab_manage(action="save")`
+  5. `prefab_manage(action="exit")`
+* Ou utilisez l'édition atomique : `prefab_manage(action="atomic_edit", prefabPath="db://assets/...", operations=[...])`
+
+### D. Réflexion de classe & types
+* Utilisez `component_manage(action="query_class_info")` pour inspecter les attributs de réflexion `@ccclass`, les valeurs par défaut et les métadonnées `@property` avant d'assigner des valeurs.
+
+### E. Génération déclarative d'UI
+* Utilisez `ui_builder(action="build_tree", parent="Canvas", tree={...})` pour construire des hiérarchies d'UI complètes (panneaux, boutons, étiquettes, sprites, vues défilantes) avec des UITransforms calculés automatiquement et des contraintes de Widget en un seul appel atomique.
+
+### F. Animation par images clés sur timeline et découpage de FBX
+* Créez des clips `.anim` avec des courbes de propriétés : `anim_manage(action="clip_create", animPath="db://assets/anims/fade.anim", tracks=[...])`.
+* Appliquez des préréglages de mouvement : `anim_manage(action="clip_apply_preset", animPath="db://assets/anims/btn_pop.anim", preset="bounce_pop")`.
+* Découpez des modèles FBX multi-takes : `anim_manage(action="slice_fbx", fbxPath="db://assets/models/char.fbx", takes=[...])`.
+
+### G. Diagnostic de scènes/ressources et comparaison différentielle d'instantanés
+* Capturez un instantané de référence de la scène avant toute modification : `validation_manage(action="capture_snapshot", tag="PreEdit")`.
+* Comparez la scène à l'instantané après modification : `validation_manage(action="diff_snapshot")`.
+* Auditez la hiérarchie de la scène pour détecter d'éventuels bugs d'agencement : `validation_manage(action="check_scene")`.
+* Analysez le projet et la scène à la recherche de références GUID brisées : `validation_manage(action="check_assets")`.
+
+---
+
+## ⚡ Démarrage rapide
+
+`pts-cc-mcp` s'exécute par défaut sur le port `3121` avec prise en charge du double transport : **Streamable HTTP** (`/mcp`) et **Server-Sent Events (SSE)** (`/sse`).
 
 ### 1. Configuration de Claude CLI
 
 ```bash
 # Streamable HTTP (Par défaut)
-claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
+claude mcp add --transport http cocos-creator http://127.0.0.1:3121/mcp
 
 # Ou via Server-Sent Events (SSE)
-claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
+claude mcp add --transport sse cocos-creator http://127.0.0.1:3121/sse
 ```
 
 ### 2. Configuration de Claude Desktop
@@ -109,7 +129,7 @@ claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
   "mcpServers": {
     "cocos-creator": {
       "type": "http",
-      "url": "http://127.0.0.1:3000/mcp"
+      "url": "http://127.0.0.1:3121/mcp"
     }
   }
 }
@@ -122,7 +142,7 @@ claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
   "mcpServers": {
     "cocos-creator": {
       "type": "sse",
-      "url": "http://127.0.0.1:3000/sse"
+      "url": "http://127.0.0.1:3121/sse"
     }
   }
 }
@@ -136,59 +156,49 @@ Dans les paramètres MCP de Cursor ou Windsurf (`.cursor/mcp.json`) :
 {
   "mcpServers": {
     "cocos-creator": {
-      "url": "http://127.0.0.1:3000/mcp"
+      "url": "http://127.0.0.1:3121/mcp"
     }
   }
 }
 ```
 
-*(Vous pouvez également spécifier `"url": "http://127.0.0.1:3000/sse"` si vous préférez).*
-
 ---
 
-## ⚠️ Prérequis et dépendance de pairs obligatoire
+## ⚠️ Prérequis & Dépendance de pairs obligatoire
 
-> **IMPORTANT : `pts-cc-mcp` nécessite que l'extension `pts-core` soit installée dans votre projet.**
+> **IMPORTANT : `pts-cc-mcp` nécessite l'installation de l'extension `pts-core` dans votre projet.**
 >
 > **Pourquoi `pts-core` est-il obligatoire ?**  
-> Cocos Creator 3.8+ utilise une architecture multi-processus où le **Processus principal de l'éditeur** (où tourne `pts-cc-mcp`) est totalement séparé du **Processus d'exécution de la scène** (où s'exécutent la scène de jeu, les composants et le runtime live du moteur `@ccclass`).  
+> Cocos Creator 3.8+ utilise une architecture multi-processus où le **Processus principal de l'éditeur** (où s'exécute `pts-cc-mcp`) est totalement isolé du **Processus d'exécution de la scène** (où s'exécutent la scène du jeu, les composants et le runtime live du moteur `@ccclass`).  
 >
 > `pts-cc-mcp` exécute les commandes de scène en appelant `Editor.Message.request('scene', 'execute-scene-script', { name: 'pts-core', method: '...' })`. Le script de scène (`src/_cc.js`) est hébergé directement au sein de `pts-core`.  
 >
-> Sans `pts-core`, les outils qui dépendent du runtime de la scène en direct (comme `component_*`, `node_node_transform`, `scene_inspect_scene`, `game_*` et `component_query_class_info`) ne peuvent pas interagir avec les nœuds de la scène.
+> Sans `pts-core`, les outils nécessitant le runtime de la scène en direct (tels que `component_*`, `node_manage`, `scene_manage`, `ui_builder` et `validation_manage`) ne peuvent pas interagir avec les nœuds de la scène.
 
-> **Avant d'installer pour la première fois ou de mettre à jour :**  
-> Veuillez impérativement supprimer les deux fichiers `mcp-server.json` et `tool-manager.json` situés dans le répertoire `settings/` de votre projet, sinon la mise en cache de la liste des outils pourrait provoquer des anomalies d'affichage !  
-> Chemins des fichiers : `<Projet>/settings/mcp-server.json` et `<Projet>/settings/tool-manager.json`.  
-> La réouverture du panneau de l'extension après la suppression de ces deux fichiers resynchronisera proprement tous les outils.
+---
 
-## Installation
+## Installation et configuration
 
-### 1. Positionner les fichiers des extensions
-
-Assurez-vous de placer À LA FOIS `pts-core` et `pts-cc-mcp` dans le répertoire `extensions/` de votre projet Cocos Creator :
+### 1. Placer les fichiers d'extension
+Assurez-vous que les DEUX extensions `pts-core` et `pts-cc-mcp` sont bien situées dans le répertoire `extensions/` de votre projet Cocos Creator :
 
 ```
 VotreProjet/
 ├── assets/
 ├── extensions/
-│   ├── pts-core/                  <- OBLIGATOIRE : Moteur central et runtime de script de scène (_cc.js)
+│   ├── pts-core/                  <- OBLIGATOIRE : Moteur principal et runtime du script de scène (_cc.js)
 │   │   ├── src/_cc.js
-│   │   ├── package.json
-│   │   └── ...
+│   │   └── package.json
 │   └── pts-cc-mcp/                <- Serveur MCP et fournisseur d'outils
 │       ├── source/
 │       ├── dist/
-│       ├── package.json
-│       └── ...
-├── settings/
-└── ...
+│       └── package.json
+└── settings/
 ```
 
 ### 2. Installer et compiler les extensions
-
 ```bash
-# 1. Configurer pts-core (si compilation depuis les sources)
+# 1. Configurer pts-core (en cas de compilation depuis les sources)
 cd extensions/pts-core
 npm install
 npm run build
@@ -199,68 +209,53 @@ npm install
 npm run build
 ```
 
-### 3. Activer les plugins dans Cocos Creator
-
-1. Redémarrez Cocos Creator ou actualisez le Gestionnaire d'extensions (**Extensions > Gestionnaire d'extensions**).
-2. Vérifiez que **pts-core** et **pts-cc-mcp** sont tous deux activés.
+### 3. Activer l'extension dans Cocos Creator
+1. Redémarrez Cocos Creator ou rechargez le Gestionnaire d'extensions (**Extensions > Gestionnaire d'extensions**).
+2. Vérifiez que **pts-core** et **pts-cc-mcp** sont tous les deux activés.
 3. Cliquez sur `Extensions > pTS MCP Server` pour ouvrir le panneau de contrôle.
-4. Le serveur fonctionne par défaut sur le port `3000` (configurable dans le panneau).
+4. Le serveur tourne par défaut sur le port `3121` (configurable dans le panneau).
 
 ---
 
-## Développement
+## Structure du projet
 
-### Structure du projet
 ```
 pts-cc-mcp/
 ├── source/                    # Fichiers sources TypeScript
-│   ├── main.ts               # Point d'entrée du plugin
-│   ├── mcp-server.ts         # Implémentation du serveur MCP
-│   ├── settings.ts           # Gestion des paramètres
-│   ├── types/                # Définitions des types TypeScript
-│   ├── utils/                # Utilitaires (résolveur de ressources, compatibilité de schéma, utilitaires JSON)
-│   ├── tools/                # Implémentations des outils
-│   │   ├── animgraph-tools.ts
-│   │   ├── batch-tools.ts
-│   │   ├── scene-tools.ts
-│   │   ├── node-tools.ts
-│   │   ├── component-tools.ts
-│   │   ├── prefab-tools.ts
-│   │   ├── project-tools.ts
-│   │   ├── debug-tools.ts
-│   │   ├── preferences-tools.ts
-│   │   ├── server-tools.ts
-│   │   ├── broadcast-tools.ts
-│   │   ├── scene-view-tools.ts
-│   │   ├── reference-image-tools.ts
-│   │   └── asset-advanced-tools.ts
-│   ├── panels/               # Implémentation du panneau UI
-│   └── test/                 # Fichiers de test
-├── dist/                     # Fichiers JavaScript compilés
-├── static/                   # Ressources statiques (icônes, etc.)
-├── i18n/                     # Fichiers d'internationalisation
-├── package.json              # Configuration du plugin
-└── tsconfig.json             # Configuration TypeScript
-```
-
-### Compilation depuis les sources
-
-```bash
-# Mode surveillance pour le développement
-npm run watch
-
-# Compilation de production
-npm run build
+│   ├── main.ts               # Point d'entrée du plugin et vérification d'initialisation
+│   ├── mcp-server.ts         # Couche de transport Streamable HTTP & SSE
+│   ├── settings.ts           # Gestion des paramètres et de la configuration
+│   ├── types/                # Définitions de types TypeScript
+│   ├── utils/                # Utilitaires
+│   │   ├── agents-doc-generator.ts # Générateur de modèles et synchroniseur AGENTS.md
+│   │   ├── asset-resolver.ts       # Résolveur intelligent d'UUID de sous-ressources
+│   │   ├── json-utils.ts           # Analyse et réparation défensive du JSON
+│   │   └── i18n.ts                 # Moteur de traduction multilingue
+│   ├── tools/                # Implémentations des sous-systèmes et outils unifiés
+│   │   ├── intent-dispatcher.ts    # Routeur d'opcodes et 16 APIs d'intention
+│   │   ├── ui-builder-tools.ts     # Générateur déclaratif d'UI en 1 passe
+│   │   ├── knowledge-tools.ts      # Base de connaissances de réflexion hors ligne
+│   │   ├── animation-tools.ts      # Éditeur d'AnimationClip et découpage de FBX
+│   │   ├── validation-tools.ts     # Diagnostics de scène et différences de régression
+│   │   ├── batch-tools.ts          # Moteur d'exécution atomique par lot
+│   │   ├── scene-tools.ts          # Gestion du cycle de vie de scène
+│   │   ├── node-tools.ts           # Opérations de transformation et d'arbre de nœuds
+│   │   ├── component-tools.ts      # Réflexion de composants et mise à jour de propriétés
+│   │   ├── prefab-tools.ts         # Pile de sessions de prefab et édition atomique
+│   │   ├── asset-advanced-tools.ts # Recherche et résolution dans la base de ressources
+│   │   ├── project-tools.ts        # Exécution de build et prévisualisation
+│   │   ├── debug-tools.ts          # Journaux de console et surveillance du compilateur TS
+│   │   └── preferences-tools.ts    # Gestion des préférences utilisateur
+│   └── panels/               # Panneau d'interface Vue 3 avec testeur d'outils
+├── dist/                     # Sortie JavaScript compilée
+├── static/                   # Ressources statiques (icônes, styles, modèles)
+├── i18n/                     # Dictionnaires d'internationalisation
+├── package.json              # Manifeste de l'extension et contributions
+└── tsconfig.json             # Configuration de build TypeScript
 ```
 
 ---
 
-## Configuration requise
-
-- Cocos Creator 3.8.6 ou supérieur
-- Node.js (inclus avec Cocos Creator)
-- TypeScript (installé en dépendance de développement)
-
 ## Licence
 
-Ce plugin est conçu pour les projets Cocos Creator avec le code source complet inclus pour l'apprentissage et le développement.
+Ce plugin est open-source sous licence MIT et conçu pour le développement de jeux sur Cocos Creator.

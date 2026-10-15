@@ -1,192 +1,202 @@
-# Cocos Creator MCP サーバープラグイン
+# Cocos Creator MCP サーバープラグイン (pts-cc-mcp)
 
 🌐 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · **日本語** · [한국어](README.ko.md) · [Español](README.es.md) · [Português](README.pt.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Русский](README.ru.md) · [Tiếng Việt](README.vi.md)
 
-Cocos Creator 3.8+ に対応した総合的な MCP（Model Context Protocol）サーバープラグインです。AI アシスタントが標準化されたプロトコルを通じて Cocos Creator エディタと連携できるようにします。ワンクリックでインストール・利用でき、煩雑な環境構築や設定は一切不要です。Claude デスクトップクライアント、Claude CLI、Cursor、Windsurf でテスト済みであり、その他の MCP 対応エディタでもシームレスに動作します。
+Cocos Creator 3.8+ に対応したオープンソースの包括的な Model Context Protocol (MCP) サーバープラグインです。AI コーディングアシスタント（Claude CLI、Claude Desktop、Cursor、Windsurf、Antigravity）が標準化されたプロトコルを通じて Cocos Creator ゲームの調査、作成、検証、操作を行えるようにします。
 
-**🚀 統合ツールアーキテクチャ、アトミックバッチ実行、ネイティブアニメーショングラフ対応を備え、エディタ制御の 99% を実現！**
+**🚀 Streamable HTTP & SSE デュアルトランスポート、16 の統合インテントツール（231 のオペコード）、宣言型ワンショット UI 生成、オフラインリフレクションナレッジベース、タイムラインキーフレームアニメーション作成、シーン/アセット回帰スナップショット差分比較を搭載！**
+
+---
 
 ## 🙏 謝辞とクレジット
 
 本プロジェクトは、**LiDaxian** 氏が作成したオープンソースプロジェクト [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) のフォークとして始まりました。Cocos Creator における AI モデルコンテキストプロトコル（MCP）の基礎アーキテクチャを築き、道を切り拓いてくださった **LiDaxian** 氏およびすべてのコミュニティ貢献者に心から感謝と敬意を表します。
 
-`pts-cc-mcp` は、この基盤の上に構築された完全オープンソースのコミュニティ主導の拡張機能であり、以下を包括的にサポートしています：
-- **100% 英語のコードベース**とシームレスな多言語 i18n ローカライズ対応
-- **プロセス内アトミックバッチ実行エンジン**（`batch_execute` / `editor_batch_execute`）
-- **ネイティブアニメーショングラフ**（`.animgraph`）のステートマシン検査と編集
-- **安全なプレハブセッションスタック**と自動復元によるシーン終了時クラッシュの防止
-- **スマート再帰アセットリゾルバー**（`@spriteFrame`、`@texture`、生パス、UUID）
-- **Spine & FastSpine** キャラクターリグの自動セットアップ
-- **TypeScript コンパイラウォッチャー**（`compile_status`）によるスクリプトコンパイル競合の解消
-
-## オープンソース版 更新履歴
-
-### 🚀 メジャーアップデート v1.6.0 (フェーズ 1: Streamable HTTP & SSE デュアルトランスポート)
-
-- **デュアルトランスポートエンジン：ネイティブ Streamable HTTP & Server-Sent Events (SSE)**：ステートレスな直通 JSON-RPC フォールバックエンドポイントに加え、`@modelcontextprotocol/sdk` の Streamable HTTP（`/mcp`）および Server-Sent Events（`/sse` & `/messages`）を完全にネイティブサポート。クライアントごとの独立したセッションライフサイクル管理、アイドルセッションの自動クリーンアップ、最新の AI IDE（Claude CLI、Cursor、Windsurf、VS Code）向けの完全な CORS サポートを提供します。
-- **シーンスクリプト実行時コアの分離と `pts-core` ピア依存関係の明記**：シーンスクリプト実行（`src/_cc.js`）のための `pts-core` に対するピア依存関係を検証・明文化し、MCP プロトコル変換と Cocos Creator エンジンのシーン操作との明確な分離を確立しました。
-
-### 🚀 メジャーアップデート v1.5.4
-
-- **プロセス内アトミックバッチ実行 (`batch_execute` / `editor_batch_execute`)**: 複数のツール操作を単一のプロセス内順次 IPC トランザクションとして実行します。HTTP のラウンドトリップと Token 消費を大幅に削減し、`stopOnError`（エラー時中断）およびシーン/プレハブの自動保存をサポートします。
-- **アニメーショングラフエンジン (`animgraph_manage`)**: `.animgraph` ファイルのネイティブな検査と変更に対応。ステートマシン、状態（State）、トランジション（Transition）、パラメータの調査、`StateMachineComponent` の追加・更新・削除、およびアセットデータベースの自動同期を伴うコンポーネントクラスタイプの一括移行をサポートします。
-- **プレハブセッションスタックと安全な復元**: `enter` 実行時にアクティブなシーンの URL/UUID を記録し、`exit` 時に以前のシーンを自動復元します。記録がない場合でもプロジェクト内の有効なシーンを自動検索し、「対象シーンが存在しません（Target scene does not exist）」エラーを完全に解消しました。シームレスな enter $\to$ edit $\to$ save $\to$ exit サイクルを実現する `atomic_edit` アクションも追加。
-- **スマートアセット＆サブアセットリゾルバー (`asset_query(action="resolve")`)**: 生パス、UUID、およびサブアセット（`@spriteFrame` $\to$ `@f9941`、`@texture` $\to$ `@6c48a`）を自動的に解決します。`set_component_property` および `update_component` に完全に統合され、ディープな自動解決が行われます。
-- **Spine / FastSpine セットアップヘルパー (`spine_setup`)**: 1 回の呼び出しでキャラクターリグを迅速に初期化。`FastSpine` または `sp.Skeleton` をアタッチし、スケルトンデータアセットをバインド、デフォルトアニメーション、ループモードを設定し、UITransform を自動同期します。
-- **コンパイラウォッチャー (`compile_status`) と防御的デフォルト値**: スクリプト編集後に Cocos Creator の TypeScript/JavaScript コンパイル完了を監視・待機し、競合状態を排除します。デバッグおよびサーバー関連ツール全体に安全な防御的デフォルト値を追加し、未知のアクションに対する明確なエラーガイダンスを提供します。
-- **100% 英語コードベースと完全な i18n 多言語対応**: すべての拡張機能ソースコード、コメント、エラーメッセージ、ログをプロフェッショナルな英語に統一し、シームレスな多言語 i18n ローカライズをサポートしました。
+`pts-cc-mcp` は、この基盤の上に構築されたコミュニティ主導の完全オープンソース拡張機能として進化を続け、すべてのクローズドソース／商用機能を優れたオープンソース実装に置き換えています。
 
 ---
 
-## ツール体系と操作コード
+## 🚀 バージョン 1.6.0 更新履歴：統合 Pro アーキテクチャ (Unified Pro Architecture)
 
-- すべてのツールは「カテゴリ_操作」の命名規則を採用し、パラメータは統一された Schema に準拠しており、複数の操作コード（`action`）の切り替えに対応することで、柔軟性と拡張性を大幅に向上させています。
-- シーン、ノード、コンポーネント、プレハブ、アセット、アニメーショングラフ、バッチトランザクション、プロジェクト、デバッグ、環境設定、サーバーステータス、メッセージブロードキャストなど、エディタ操作全体を網羅しています。
-- ツール呼び出しの例：
+### 1. Streamable HTTP & Server-Sent Events (SSE) デュアルトランスポート（フェーズ 1）
+- ポート `3121` で `@modelcontextprotocol/sdk` の Streamable HTTP（`/mcp`）および Server-Sent Events（`/sse` & `/messages`）を完全にネイティブサポート。
+- クライアントごとの独立したセッション管理、キープアライブハートビート、最新の AI クライアント向けの CORS ヘッダーを提供。
 
-```json
-{
-  "tool": "batch_execute",
-  "arguments": {
-    "operations": [
-      {
-        "tool": "node_node_transform",
-        "args": { "nodeUuid": "node-uuid", "position": { "x": 100, "y": 50 } }
-      },
-      {
-        "tool": "component_set_component_property",
-        "args": {
-          "nodeUuid": "node-uuid",
-          "componentType": "cc.Sprite",
-          "property": "spriteFrame",
-          "propertyType": "spriteFrame",
-          "value": "db://assets/textures/hero.png@spriteFrame"
-        }
-      }
-    ],
-    "autoSave": true
-  }
-}
-```
+### 2. インテントレベルの統合オペコードアーキテクチャ（フェーズ 2）
+- 50 以上の分散していたスキーマを、231 の操作（`action` オペコードディスパッチ）をカバーする **16 の統合インテントツール** に統合。
+- レガシーツール呼び出しとの下位互換性を維持しながら、LLM コンテキストウィンドウにおけるスキーマトークン消費を 70% 以上削減。
+
+### 3. 宣言型ワンショット UI＆シーンビルダー（フェーズ 3）
+- `ui_builder`: `UITransform` の自動作成、制約解決（Widget アンカー、Layout マージン）、エラー時の自動ロールバックスナップショットを備え、複雑な UI グラフ（`build_tree`、`create_dialog`、`create_button`、`create_list`）を宣言的に構築。
+
+### 4. 組み込み Cocos Creator 3.8 リフレクションナレッジベース（フェーズ 4）
+- `knowledge_query`: ビルトイン 2D/3D コンポーネント（`cc.Sprite`、`cc.Label`、`cc.Widget`、`cc.Layout`、`sp.Skeleton`）のインメモリアーキテクチャルールと `@property` 辞書、デザイン解像度ガイド、座標変換式。
+- 自動化された `AGENTS.md` 検証およびドキュメントジェネレーター（`get_mcp_guide`、`sync_agents_doc`）。
+
+### 5. タイムラインアニメーション＆キーフレーム曲線エディタ（フェーズ 5）
+- `anim_manage`: 3次ベジェ（Cubic Bezier）、線形（Linear）、定数（Constant）曲線補間による `.anim`（`cc.AnimationClip`）トラックの直接オーサリング。
+- アニメーションイベントトリガー、クイックモーションプリセット（`bounce_pop`、`fade_in`、`fade_out`、`shake`）、自動マルチテイク FBX アニメーションスライシング。
+
+### 6. シーン＆アセットの診断・スナップショット差分（フェーズ 6）
+- `validation_manage`: 兄弟ノードの同名衝突検出、`UITransform` 欠落の診断、シーンコンポーネントの `__uuid__` 参照と `asset-db` を照合する詳細な再帰的アセットスキャナー。
+- SHA-256 シーン状態スナップショット（`capture_snapshot`）と視覚的な Markdown 回帰差分テーブル（`diff_snapshot`）。
 
 ---
 
-## 主要機能カテゴリ
+## 🛠️ 統合インテント API チートシート (16 ツール)
 
-- **batch_execute / editor_batch_execute**: 単一の IPC トランザクションで複数のツール操作を実行するアトミックバッチ実行エンジン
-- **animgraph_manage**: ネイティブな `.animgraph` の検査、ステートマシンのトランジション、およびコンポーネントの CRUD
-- **scene_management / scene_hierarchy**: シーンのライフサイクル（取得/開く/保存/作成/閉じる）と階層ツリー
-- **node_query / node_lifecycle / node_transform**: ノードの検索、作成、削除、階層構造、およびトランスフォーム
-- **component_manage / set_component_property / spine_setup**: コンポーネントのライフサイクル、プロパティ設定、および FastSpine リグのセットアップ
-- **prefab_browse / prefab_lifecycle / prefab_instance / prefab_edit**: プレハブ管理、インスタンス化、セッションスタック、およびアトミック編集
-- **asset_manage / asset_analyze / asset_query**: アセットの CRUD、依存関係追跡、およびスマートサブアセット解決
-- **debug_console / debug_logs / compile_status**: コンソール監視、プロジェクトログ検索、および TS コンパイラウォッチャー
-- **project_manage / project_build_system**: プロジェクト実行、ビルドパネル制御、およびプレビューサーバー
-- **preferences_manage**: エディタの環境設定管理
-- **server_information / server_connectivity**: サーバー IP 一覧、ポート検査、および接続性診断
-- **broadcast_log_management / broadcast_listener_management**: エディタ内部イベントの監視とブロードキャスト
+| インテントツール | 主要引数 | 用途とベストプラクティス |
+| :--- | :--- | :--- |
+| **`scene_manage`** | `action: "get_current" \| "hierarchy" \| "inspect" \| "open" \| "save" \| "create"`, `includeComponents: true` | シーンライフサイクル管理、完全なツリーインスペクション、シーンスクリプト実行。 |
+| **`node_manage`** | `action: "query" \| "create" \| "delete" \| "duplicate" \| "transform" \| "reparent"`, `nodeUuid`, `position`, `size`, `queryType` | ユニバーサルノード検索、作成、削除、トランスフォーム、階層操作。 |
+| **`component_manage`** | `action: "add" \| "remove" \| "get" \| "update" \| "bind_event" \| "query_class_info"`, `nodeUuid`, `componentType`, `properties` | コンポーネントの追加/削除、ディーププロパティ更新（自動保存付き）、クリックイベントバインド、@ccclass リフレクション。 |
+| **`prefab_manage`** | `action: "list" \| "info" \| "validate" \| "enter" \| "exit" \| "save" \| "instantiate" \| "atomic_edit"`, `prefabPath`, `nodeUuid` | プレハブの完全なライフサイクル、非破壊的編集セッションスタック、アトミック一括編集。 |
+| **`ui_builder`** | `action: "build_tree" \| "create_dialog" \| "create_button" \| "create_list"`, `tree`, `parent` | 宣言型ワンショット UI 生成（自動 UITransform、Widget 制約、Layout 自動計算）。 |
+| **`anim_manage`** | `action: "clip_inspect" \| "clip_create" \| "clip_add_track" \| "clip_add_keyframe" \| "clip_apply_preset" \| "slice_fbx" \| "graph_inspect"`, `animPath`, `property`, `time`, `value` | タイムライン AnimationClip 編集、プロパティ曲線、イージングモード、アニメーションイベント、プリセット、FBX スライシング、AnimGraph ステートマシン。 |
+| **`asset_manage`** | `action: "query" \| "resolve" \| "import" \| "delete" \| "dependencies"`, `folder`, `assetPath`, `assets` | アセット検出、依存関係検査、スマートサブアセット解決（`@spriteFrame`、`@texture`）。 |
+| **`knowledge_query`** | `action: "query_component" \| "query_rules" \| "query_layout_patterns" \| "get_mcp_guide" \| "list_topics"`, `className`, `topic` | コンポーネント、座標、ルール、最新の MCP ガイドに関するオフラインアーキテクチャリファレンス。 |
+| **`validation_manage`**| `action: "check_scene" \| "check_assets" \| "check_viewport" \| "capture_snapshot" \| "diff_snapshot" \| "list_snapshots" \| "restore_snapshot"`, `threshold`, `tag`, `snapshotId` | 欠落している UITransform、破損したアセット、範囲外ノードの自動監査、視覚的スナップショット回帰差分比較。 |
+| **`batch_execute`** | `operations: [{ tool, args }]`, `autoSave: true` | 単一の IPC トランザクション内で複数の操作を順次実行するプロセス内アトミックバッチ実行エンジン。 |
+| **`project_manage`** | `action: "get_info" \| "build" \| "run" \| "compile_watch"` | ビルド設定確認、プレビューサーバー制御、TypeScript コンパイル状態監視。 |
+| **`scene_view_control`**| `action: "camera_focus" \| "camera_view" \| "grid_toggle" \| "gizmo_mode"`, `nodeUuid`, `viewMode` | ビューポートカメラのフォーカス、視点切り替え、エディタオーバーレイ/Gizmo 操作。 |
+| **`spine_manage`** | `action: "setup_rig" \| "query_animations" \| "set_animation"`, `nodeUuid`, `spineAssetPath`, `defaultAnimation` | ワンコールでの Spine スケルトンまたは FastSpine リグのセットアップとアニメーション構成。 |
+| **`debug_manage`** | `action: "get_logs" \| "search_logs" \| "get_stats"` | エディタコンソールログ監視とパフォーマンスメトリクス取得。 |
+| **`preferences_manage`**| `action: "get" \| "set" \| "backup"`, `key`, `value` | エディタ環境設定の取得と構成。 |
+| **`broadcast_manage`** | `action: "subscribe" \| "emit" \| "history"`, `channel`, `message` | エディタ内イベントの監視とブロードキャスト。 |
 
 ---
 
-## クイックスタート
+## 📖 標準 MCP ワークフロー
 
-`pts-cc-mcp` は **Streamable HTTP**（`/mcp`）と **Server-Sent Events (SSE)**（`/sse`）のデュアルトランスポートをサポートしています。
+### A. シーンまたはプレハブグラフのインスペクション
+* `scene_manage(action="inspect")` を使用して、フォーマットされた JSON または Markdown ツリーでシーン階層、コンポーネント、プロパティを検査します。
+* `scene_manage(action="hierarchy", includeComponents=true)` を使用して、アクティブなシーンまたは開いているプレハブ内のライブノードを一覧表示します。
+
+### B. アクティブなシーン内のコンポーネント変更
+* `component_manage(action="update")` を使用して、ディーププロパティ更新（`config.sid`、`config.data`）、ネストされた `@ccclass` オブジェクトのインスタンス化、アセット配列（`onUpdates`、`onChanged`）を適用します。
+* `scene_manage(action="save")` を使用してシーンの変更を保存します。
+
+### C. プレハブ内のコンポーネント / ノード変更
+* **プレハブが現在開いている／検査中の場合：**
+  1. `node_manage(action="query")` でターゲットノードを特定。
+  2. `component_manage(action="add")`（新しいスクリプトのアタッチ）または `component_manage(action="update")`（データの設定）。
+  3. `prefab_manage(action="save")` で保存。
+* **プレハブがバックグラウンドにある場合（開いていない場合）：**
+  1. `prefab_manage(action="enter", prefabPath="db://assets/...")`
+  2. `scene_manage(action="hierarchy")` / `node_manage(action="query")` でターゲットノードを特定。
+  3. `component_manage(action="update")` で変更を適用。
+  4. `prefab_manage(action="save")` で保存。
+  5. `prefab_manage(action="exit")` で退出。
+* またはアトミック編集を使用：`prefab_manage(action="atomic_edit", prefabPath="db://assets/...", operations=[...])`
+
+### D. クラスリフレクションと型情報
+* 値を割り当てる前に、`component_manage(action="query_class_info")` を使用して `@ccclass` リフレクション属性、デフォルト値、および `@property` メタデータを検査します。
+
+### E. 宣言型 UI 生成
+* `ui_builder(action="build_tree", parent="Canvas", tree={...})` を使用して、1 回の呼び出しで完全な UI 階層（パネル、ボタン、ラベル、スプライト、スクロールビューなど）を構築し、自動計算された UITransform と Widget 制約を適用します。
+
+### F. タイムラインキーフレームアニメーションと FBX スライシング
+* プロパティ曲線を使用して `.anim` クリップをオーサリング：`anim_manage(action="clip_create", animPath="db://assets/anims/fade.anim", tracks=[...])`。
+* モーションプリセットの適用：`anim_manage(action="clip_apply_preset", animPath="db://assets/anims/btn_pop.anim", preset="bounce_pop")`。
+* マルチテイク FBX モデルのスライシング：`anim_manage(action="slice_fbx", fbxPath="db://assets/models/char.fbx", takes=[...])`。
+
+### G. シーン＆アセットの診断とスナップショット回帰差分
+* 変更前にベースラインのシーンスナップショットをキャプチャ：`validation_manage(action="capture_snapshot", tag="PreEdit")`。
+* 編集後にシーンとスナップショットを比較：`validation_manage(action="diff_snapshot")`。
+* シーン階層のレイアウトバグを監査：`validation_manage(action="check_scene")`。
+* プロジェクトとシーン内の無効な GUID アセット参照をスキャン：`validation_manage(action="check_assets")`。
+
+---
+
+## ⚡ クイックスタート
+
+`pts-cc-mcp` はデフォルトでポート `3121` で動作し、**Streamable HTTP**（`/mcp`）および **Server-Sent Events (SSE)**（`/sse`）のデュアルトランスポートをサポートしています。
 
 ### 1. Claude CLI 設定
 
 ```bash
 # Streamable HTTP（デフォルト推奨）
-claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
+claude mcp add --transport http cocos-creator http://127.0.0.1:3121/mcp
 
 # または Server-Sent Events (SSE) 経由
-claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
+claude mcp add --transport sse cocos-creator http://127.0.0.1:3121/sse
 ```
 
-### 2. Claude デスクトップ設定
+### 2. Claude Desktop クライアント設定
 
 ```json
 {
   "mcpServers": {
     "cocos-creator": {
       "type": "http",
-      "url": "http://127.0.0.1:3000/mcp"
+      "url": "http://127.0.0.1:3121/mcp"
     }
   }
 }
 ```
 
-*または SSE トランスポートでの設定：*
+*または SSE プロトコルを使用する場合：*
 
 ```json
 {
   "mcpServers": {
     "cocos-creator": {
       "type": "sse",
-      "url": "http://127.0.0.1:3000/sse"
+      "url": "http://127.0.0.1:3121/sse"
     }
   }
 }
 ```
 
-### 3. Cursor および Windsurf 設定
+### 3. Cursor & Windsurf 設定
 
-Cursor または Windsurf の MCP 設定（`.cursor/mcp.json`）：
+Cursor または Windsurf の MCP 設定（`.cursor/mcp.json`）に追加：
 
 ```json
 {
   "mcpServers": {
     "cocos-creator": {
-      "url": "http://127.0.0.1:3000/mcp"
+      "url": "http://127.0.0.1:3121/mcp"
     }
   }
 }
 ```
 
-*（必要に応じて `"url": "http://127.0.0.1:3000/sse"` を指定することも可能です）。*
+---
+
+## ⚠️ 前提条件と必須ピア依存関係
+
+> **重要：`pts-cc-mcp` を使用するには、プロジェクトに `pts-core` 拡張機能がインストールされている必要があります。**
+>
+> **なぜ `pts-core` が必須なのか？**  
+> Cocos Creator 3.8+ はマルチプロセスアーキテクチャを採用しており、**エディタメインプロセス**（`pts-cc-mcp` が動作する環境）と**シーン実行プロセス**（ゲームシーン、コンポーネント、およびライブ `@ccclass` エンジンランタイムが動作する環境）は完全に分離されています。  
+>
+> `pts-cc-mcp` は、`Editor.Message.request('scene', 'execute-scene-script', { name: 'pts-core', method: '...' })` を呼び出すことによってシーンコマンドを実行します。このシーンスクリプト（`src/_cc.js`）は `pts-core` 内に直接ホストされています。  
+>
+> `pts-core` がない場合、ライブシーンランタイムを必要とするツール（`component_*`、`node_manage`、`scene_manage`、`ui_builder`、`validation_manage` など）はシーンノードと対話できません。
 
 ---
 
-## ⚠️ 前提条件と必須のピア依存関係
+## インストールとセットアップ
 
-> **重要: `pts-cc-mcp` を使用するには、プロジェクトに `pts-core` 拡張機能がインストールされている必要があります。**
->
-> **なぜ `pts-core` が必須なのか？**  
-> Cocos Creator 3.8+ ではマルチプロセスアーキテクチャが採用されており、**エディタメインプロセス**（`pts-cc-mcp` が動作する場所）と**シーン実行プロセス**（ゲームシーン、コンポーネント、および live な `@ccclass` エンジンランタイムが動作する場所）が完全に分離されています。  
->
-> `pts-cc-mcp` は、`Editor.Message.request('scene', 'execute-scene-script', { name: 'pts-core', method: '...' })` を呼び出してエンジンに IPC 要求を送信し、シーンコマンドを実行します。このシーンスクリプト（`src/_cc.js`）は直接 `pts-core` 内に配置されています。  
->
-> `pts-core` が存在しない場合、ライブシーンランタイムを必要とするツール（`component_*`、`node_node_transform`、`scene_inspect_scene`、`game_*`、`component_query_class_info` など）はシーンノードと対話できません。
-
-> **初めてインストールする場合やアップグレードを行う前の注意点：**  
-> 必ずプロジェクトの `settings/` ディレクトリ配下にある `mcp-server.json` と `tool-manager.json` の 2 つのファイルを削除してください。削除しない場合、ツール一覧のキャッシュにより表示に不具合が生じる可能性があります！  
-> ファイルパス：`<Project>/settings/mcp-server.json` および `<Project>/settings/tool-manager.json`。  
-> これら 2 つのファイルを削除した後、拡張機能パネルを再度開くことで、すべてのツールがクリーンに再同期されます。
-
-## インストール手順
-
-### 1. プラグインファイルの配置
-
-`pts-core` と `pts-cc-mcp` の両方の拡張機能が Cocos Creator プロジェクトの `extensions/` ディレクトリ内に配置されていることを確認します：
+### 1. 拡張機能ファイルの配置
+Cocos Creator プロジェクトの `extensions/` ディレクトリ内に、`pts-core` と `pts-cc-mcp` の両方が配置されていることを確認します：
 
 ```
 YourProject/
 ├── assets/
 ├── extensions/
-│   ├── pts-core/                  <- 必須: コアエンジン＆シーンスクリプト実行環境 (_cc.js)
+│   ├── pts-core/                  <- 必須：コアエンジンおよびシーンスクリプトランタイム (_cc.js)
 │   │   ├── src/_cc.js
-│   │   ├── package.json
-│   │   └── ...
-│   └── pts-cc-mcp/                <- MCP サーバー＆ツールプロバイダー
+│   │   └── package.json
+│   └── pts-cc-mcp/                <- MCP サーバーおよびツールプロバイダー
 │       ├── source/
 │       ├── dist/
-│       ├── package.json
-│       └── ...
-├── settings/
-└── ...
+│       └── package.json
+└── settings/
 ```
 
 ### 2. 依存関係のインストールとビルド
-
 ```bash
 # 1. pts-core のセットアップ（ソースからビルドする場合）
 cd extensions/pts-core
@@ -199,68 +209,53 @@ npm install
 npm run build
 ```
 
-### 3. Cocos Creator でのプラグイン有効化
-
-1. Cocos Creator を再起動するか、拡張機能マネージャーを再読み込みします（**拡張機能 > 拡張機能マネージャー**）。
+### 3. Cocos Creator で拡張機能を有効化
+1. Cocos Creator を再起動するか、拡張機能マネージャー（**拡張機能 > 拡張機能マネージャー**）を再読み込みします。
 2. **pts-core** と **pts-cc-mcp** の両方が有効になっていることを確認します。
 3. `拡張機能 > pTS MCP Server` をクリックしてコントロールパネルを開きます。
-4. サーバーはデフォルトでポート `3000` で動作します（パネルから変更可能）。
+4. サーバーはデフォルトでポート `3121` で動作します（パネルで変更可能）。
 
 ---
 
-## 開発
+## プロジェクト構成
 
-### プロジェクト構造
 ```
 pts-cc-mcp/
 ├── source/                    # TypeScript ソースファイル
-│   ├── main.ts               # プラグインのエントリーポイント
-│   ├── mcp-server.ts         # MCP サーバーの実装
-│   ├── settings.ts           # 設定管理
+│   ├── main.ts               # プラグインエントリポイント＆ブートストラップ検証
+│   ├── mcp-server.ts         # Streamable HTTP & SSE トランスポート層
+│   ├── settings.ts           # 設定および構成管理
 │   ├── types/                # TypeScript 型定義
-│   ├── utils/                # ユーティリティ（アセットリゾルバー、Schema互換、JSONユーティリティ）
-│   ├── tools/                # ツール実装
-│   │   ├── animgraph-tools.ts
-│   │   ├── batch-tools.ts
-│   │   ├── scene-tools.ts
-│   │   ├── node-tools.ts
-│   │   ├── component-tools.ts
-│   │   ├── prefab-tools.ts
-│   │   ├── project-tools.ts
-│   │   ├── debug-tools.ts
-│   │   ├── preferences-tools.ts
-│   │   ├── server-tools.ts
-│   │   ├── broadcast-tools.ts
-│   │   ├── scene-view-tools.ts
-│   │   ├── reference-image-tools.ts
-│   │   └── asset-advanced-tools.ts
-│   ├── panels/               # UI パネル実装
-│   └── test/                 # テストファイル
+│   ├── utils/                # ユーティリティ
+│   │   ├── agents-doc-generator.ts # AGENTS.md テンプレート＆ドキュメント同期ジェネレーター
+│   │   ├── asset-resolver.ts       # スマートサブアセット UUID リゾルバー
+│   │   ├── json-utils.ts           # 防御的 JSON パース＆修復
+│   │   └── i18n.ts                 # 多言語翻訳エンジン
+│   ├── tools/                # サブシステムおよび統合ツール実装
+│   │   ├── intent-dispatcher.ts    # 16 インテント API ディスパッチャー＆オペコードルーター
+│   │   ├── ui-builder-tools.ts     # 宣言型ワンショット UI ビルダー
+│   │   ├── knowledge-tools.ts      # オフラインリフレクションナレッジベース
+│   │   ├── animation-tools.ts      # AnimationClip ＆ FBX スライシングエディタ
+│   │   ├── validation-tools.ts     # シーン診断＆スナップショット回帰差分比較
+│   │   ├── batch-tools.ts          # アトミックバッチ実行エンジン
+│   │   ├── scene-tools.ts          # シーンライフサイクル管理
+│   │   ├── node-tools.ts           # ノードトランスフォーム＆階層操作
+│   │   ├── component-tools.ts      # コンポーネントリフレクション＆プロパティアップデータ
+│   │   ├── prefab-tools.ts         # プレハブセッションスタック＆アトミック編集
+│   │   ├── asset-advanced-tools.ts # アセットデータベース検索＆スマート解決
+│   │   ├── project-tools.ts        # ビルド＆プレビュー実行
+│   │   ├── debug-tools.ts          # コンソールログ＆ TS コンパイラウォッチャー
+│   │   └── preferences-tools.ts    # ユーザー環境設定管理
+│   └── panels/               # Vue 3 UI パネル実装（ツールテスター内蔵）
 ├── dist/                     # コンパイル済み JavaScript 出力
-├── static/                   # 静的アセット（アイコンなど）
-├── i18n/                     # 国際化リソース
-├── package.json              # プラグイン設定
-└── tsconfig.json             # TypeScript 設定
-```
-
-### ソースからのビルド
-
-```bash
-# 開発用ウォッチモード
-npm run watch
-
-# プロダクションビルド
-npm run build
+├── static/                   # 静的アセット（アイコン、スタイル、テンプレート）
+├── i18n/                     # 国際化言語ディクショナリ
+├── package.json              # 拡張機能マニフェスト＆コントリビューション
+└── tsconfig.json             # TypeScript ビルド設定
 ```
 
 ---
 
-## システム要件
-
-- Cocos Creator 3.8.6 以降
-- Node.js（Cocos Creator に同梱）
-- TypeScript（開発依存関係としてインストール）
-
 ## ライセンス
 
-本プラグインは Cocos Creator プロジェクト向けに設計されており、学習および開発を目的として完全なソースコードが含まれています。
+本プラグインは MIT ライセンスの下でオープンソースとして公開されており、Cocos Creator ゲーム開発向けに設計されています。

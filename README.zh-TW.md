@@ -1,115 +1,135 @@
-# Cocos Creator MCP 伺服器外掛
+# Cocos Creator MCP 伺服器外掛 (pts-cc-mcp)
 
 🌐 [English](README.md) · [简体中文](README.zh-CN.md) · **繁體中文** · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Português](README.pt.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Русский](README.ru.md) · [Tiếng Việt](README.vi.md)
 
-一款適用於 Cocos Creator 3.8+ 的綜合性 MCP（模型上下文協議）伺服器外掛，讓 AI 助手能夠透過標準化協議與 Cocos Creator 編輯器進行互動。一鍵安裝即可使用，省去所有繁瑣的環境與設定。已測試過 Claude 桌面用戶端、Claude CLI、Cursor 與 Windsurf，其他相容 MCP 的編輯器亦能完美支援。
+一款適用於 Cocos Creator 3.8+ 的綜合性開源 MCP（Model Context Protocol，模型上下文協議）伺服器外掛，賦能各類 AI 程式碼助理（Claude CLI、Claude Desktop、Cursor、Windsurf、Antigravity）透過標準化協議對 Cocos Creator 遊戲專案進行審查、創作、校驗與全方位控制。
 
-**🚀 現已提供強大融合工具體系、原子化批次處理能力與原生動畫圖支援，實現 99% 的編輯器控制！**
+**🚀 具備 Streamable HTTP 與 SSE 雙傳輸引擎、16 個統一意圖工具（涵蓋 231 個操作碼）、宣告式一鍵 UI 建構、離線反射知識庫、時間軸關鍵影格動畫製作以及場景/資產回歸快照比對！**
+
+---
 
 ## 🙏 致謝與來源聲明
 
-本專案基於 **LiDaxian** 開源的 [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) 進行二次開發與架構增強。我們衷心感謝 **LiDaxian** 及社群貢獻者為 Cocos Creator 接入 AI 模型上下文協議（MCP）奠定的堅實基礎。
+本專案最初基於 **LiDaxian** 建立的開源專案 [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) 進行分叉開發。我們向 **LiDaxian** 先生以及所有社群貢獻者致以最崇高的敬意與由衷感謝，正是他們奠定了基礎架構，開闢了 AI 驅動 Cocos Creator 開發的全新道路。
 
-`pts-cc-mcp` 將作為完全開源的社群專案持續迭代演進，現已全面支援：
-- **100% 英文核心程式碼庫**，附帶完整的多語言 i18n 本地化支援
-- **程序內原子批次處理執行引擎**（`batch_execute` / `editor_batch_execute`）
-- **原生動畫圖狀態機讀寫與編輯**（`animgraph_manage`）
-- **安全預製體編輯會話棧**，自動復原場景避免退出崩潰
-- **智慧遞迴資源與子資源解析器**（`@spriteFrame`、`@texture`、原生路徑與 UUID）
-- **Spine 與 FastSpine** 角色骨骼一鍵自動化裝配工具
-- **TypeScript 編譯器監聽**（`compile_status`），消除腳本修改後的並行衝突
-
-## 開源版本更新日誌
-
-### 🚀 重大更新 v1.6.0 (階段 1: 雙協議 Streamable HTTP 與 SSE 傳輸)
-
-- **雙傳輸引擎：原生 Streamable HTTP 與 Server-Sent Events (SSE)**：全面原生支援 `@modelcontextprotocol/sdk` 的 Streamable HTTP（`/mcp`）和 Server-Sent Events（`/sse` 與 `/messages`），並保留無狀態直通 JSON-RPC 兜底端點。提供用戶端獨立會話生命週期管理、閒置會話自動清理以及面向現代 AI IDE（Claude CLI、Cursor、Windsurf、VS Code）的完整 CORS 支援。
-- **解耦場景腳本執行時期並宣告 `pts-core` 對等依賴**：驗證並明確規範對 `pts-core` 外掛中場景腳本執行器（`src/_cc.js`）的對等依賴，確保 MCP 協議層與 Cocos Creator 引擎場景底層操作清晰解耦。
-
-### 🚀 重大更新 v1.5.4
-
-- **程序內原子批次處理 (`batch_execute` / `editor_batch_execute`)**：支援將多個工具呼叫合併為單一事務在程序內順次執行，大幅降低 HTTP 往返與 Token 開銷，支援出錯即停與自動儲存。
-- **動畫圖狀態機支援 (`animgraph_manage`)**：原生讀寫 `.animgraph` 檔案，支援審查狀態/過渡/參數、增刪改 `StateMachineComponent`、批次遷移元件類型，儲存時自動重新整理資源庫。
-- **預製體編輯會話棧與安全復原**：`enter` 時自動記憶進入前的場景 UUID/URL，`exit` 時自動復原場景；若未記錄則自動搜尋專案有效場景，徹底消除「目標場景不存在」報錯；新增 `atomic_edit` 動作。
-- **智慧資源與子資源解析 (`asset_query(action="resolve")`)**：自動解析路徑、UUID 及 `@spriteFrame`（對應 `@f9941`）與 `@texture`（對應 `@6c48a`），並在元件屬性設定與更新中自動遞迴解析。
-- **Spine / FastSpine 角色裝配 (`spine_setup`)**：一鍵掛載 FastSpine 或 sp.Skeleton、繫結骨骼資產、設定預設動作與循環、自動同步 UITransform。
-- **編譯狀態監控與防禦性預設值 (`compile_status`)**：支援腳本修改後查詢或等待 TypeScript 編譯器就緒，消除並行呼叫衝突；所有除錯與伺服器工具支援缺省安全預設值，並提供明確的錯誤指示。
-- **程式碼全面英文規範化**：原始碼、註釋與錯誤提示 100% 英文規範化，搭配完整的多語言 i18n 系統。
+`pts-cc-mcp` 在此基石之上，作為一個由社群驅動的 100% 完全開源擴充套件持續演進，以更優異的開源實現取代了所有的閉源與商業化特性。
 
 ---
 
-## 工具體系與操作碼
+## 🚀 版本 1.6.0 更新日誌：統一專業級架構 (Unified Pro Architecture)
 
-- 所有工具均以「類別_操作」命名，參數採用統一 Schema，支援多操作碼（action）切換，大幅提升靈活性和可擴充性。
-- 涵蓋場景、節點、元件、預製體、資源、動畫圖、批次處理、專案、除錯、偏好設定、伺服器、訊息廣播等全部編輯器操作。
-- 工具呼叫範例：
+### 1. 雙協議原生支援：Streamable HTTP 與 Server-Sent Events (SSE) 傳輸 (階段 1)
+- 全面原生支援 `@modelcontextprotocol/sdk` 的 Streamable HTTP（`/mcp`）與 Server-Sent Events（`/sse` 與 `/messages`），預設運作於連接埠 `3121`。
+- 提供基於用戶端的獨立會話生命週期管理、心跳保活機制，以及面向現代 AI 用戶端的完整 CORS 標頭支援。
 
-```json
-{
-  "tool": "batch_execute",
-  "arguments": {
-    "operations": [
-      {
-        "tool": "node_node_transform",
-        "args": { "nodeUuid": "node-uuid", "position": { "x": 100, "y": 50 } }
-      },
-      {
-        "tool": "component_set_component_property",
-        "args": {
-          "nodeUuid": "node-uuid",
-          "componentType": "cc.Sprite",
-          "property": "spriteFrame",
-          "propertyType": "spriteFrame",
-          "value": "db://assets/textures/hero.png@spriteFrame"
-        }
-      }
-    ],
-    "autoSave": true
-  }
-}
-```
+### 2. 意圖級統一操作碼架構 (階段 2)
+- 將以往 50 多個分散零碎的工具 Schema 統一收斂為 **16 個統一意圖工具**，涵蓋 231 種細分操作（基於 `action` 操作碼分發）。
+- 在 LLM 上下文視窗中將 Schema Token 消耗降低 70% 以上，同時完美維持對舊版工具呼叫的向下相容。
+
+### 3. 宣告式一鍵 UI 與場景建構器 (階段 3)
+- `ui_builder`：支援透過宣告式資料一鍵建構複雜的 UI 節點樹（`build_tree`、`create_dialog`、`create_button`、`create_list`），自動掛載 `UITransform`、計算約束佈局（Widget 錨點對齊、Layout 邊距自動求解），並在發生例外時自動執行快照回復。
+
+### 4. 嵌入式 Cocos Creator 3.8 反射知識庫 (階段 4)
+- `knowledge_query`：內建 2D/3D 元件（`cc.Sprite`、`cc.Label`、`cc.Widget`、`cc.Layout`、`sp.Skeleton` 等）的架構規範與 `@property` 屬性字典、設計解析度適配指引以及世界座標/區域座標轉換公式。
+- 提供自動化 `AGENTS.md` 校驗與文件產生器（`get_mcp_guide`、`sync_agents_doc`）。
+
+### 5. 時間軸動畫與關鍵影格曲線編輯器 (階段 5)
+- `anim_manage`：直接建立與編輯 `.anim`（`cc.AnimationClip`）軌道，支援三次貝茲（Cubic Bezier）、線性（Linear）與常數（Constant）曲線插值。
+- 支援動畫影格事件觸發器（Animation Events）、快捷動態預設（`bounce_pop`、`fade_in`、`fade_out`、`shake`），以及自動化多分段 FBX 動畫片段（Take）切分。
+
+### 6. 場景與資產診斷及快照比對 (階段 6)
+- `validation_manage`：同層節點同名衝突偵測、缺失 `UITransform` 診斷，以及深度遞迴掃描場景元件中的 `__uuid__` 資產引用有效性。
+- 提供 SHA-256 場景狀態快照擷取（`capture_snapshot`）與視覺化 Markdown 回歸比對表格（`diff_snapshot`）。
 
 ---
 
-## 主要功能類別
+## 🛠️ 16 個統一意圖 API 速查表
 
-- **batch_execute / editor_batch_execute**：原子化批次處理執行引擎，單次請求執行多項工具操作
-- **animgraph_manage**：動畫圖狀態機讀寫、狀態機元件繫結與批次遷移
-- **scene_management / scene_hierarchy**：場景管理（取得/開啟/儲存/新建/關閉場景）與層級樹
-- **node_query / node_lifecycle / node_transform**：節點查詢、建立、刪除、變換與屬性變更
-- **component_manage / set_component_property / spine_setup**：元件管理、屬性嚴格校驗設定、FastSpine 裝配
-- **prefab_browse / prefab_lifecycle / prefab_instance / prefab_edit**：預製體瀏覽、建立、實體化、安全進出與原子編輯
-- **asset_manage / asset_analyze / asset_query**：資源匯入、刪除、相依性分析、智慧子資源解析
-- **debug_console / debug_logs / compile_status**：主控台管理、日誌分析與 TS 編譯監控
-- **project_manage / project_build_system**：專案執行、建置、設定資訊
-- **preferences_manage**：偏好設定管理
-- **server_information / server_connectivity**：伺服器資訊與連通性檢測
-- **broadcast_log_management / broadcast_listener_management**：編輯器內部訊息監控與廣播
+| 意圖工具 | 核心參數 | 作用與最佳實踐 |
+| :--- | :--- | :--- |
+| **`scene_manage`** | `action: "get_current" \| "hierarchy" \| "inspect" \| "open" \| "save" \| "create"`, `includeComponents: true` | 場景生命週期管理、完整節點樹檢查與場景腳本執行。 |
+| **`node_manage`** | `action: "query" \| "create" \| "delete" \| "duplicate" \| "transform" \| "reparent"`, `nodeUuid`, `position`, `size`, `queryType` | 通用節點搜尋、建立、刪除、變換與層級關係調整。 |
+| **`component_manage`** | `action: "add" \| "remove" \| "get" \| "update" \| "bind_event" \| "query_class_info"`, `nodeUuid`, `componentType`, `properties` | 新增/移除元件、深度屬性更新（具自動儲存）、點擊事件繫結與 @ccclass 類別反射。 |
+| **`prefab_manage`** | `action: "list" \| "info" \| "validate" \| "enter" \| "exit" \| "save" \| "instantiate" \| "atomic_edit"`, `prefabPath`, `nodeUuid` | 預製體全生命週期管理、非破壞性編輯會話棧與原子化批次編輯。 |
+| **`ui_builder`** | `action: "build_tree" \| "create_dialog" \| "create_button" \| "create_list"`, `tree`, `parent` | 宣告式一鍵 UI 產生，自動計算 UITransform、Widget 約束與 Layout 佈局。 |
+| **`anim_manage`** | `action: "clip_inspect" \| "clip_create" \| "clip_add_track" \| "clip_add_keyframe" \| "clip_apply_preset" \| "slice_fbx" \| "graph_inspect"`, `animPath`, `property`, `time`, `value` | 時間軸 AnimationClip 編輯、屬性曲線插值、緩動模式、動畫事件、預設套用、FBX 動畫切分與 AnimGraph 狀態機。 |
+| **`asset_manage`** | `action: "query" \| "resolve" \| "import" \| "delete" \| "dependencies"`, `folder`, `assetPath`, `assets` | 資產探索、相依性分析以及智慧子資產解析（`@spriteFrame`、`@texture`）。 |
+| **`knowledge_query`** | `action: "query_component" \| "query_rules" \| "query_layout_patterns" \| "get_mcp_guide" \| "list_topics"`, `className`, `topic` | 離線架構知識庫查詢，涵蓋內建元件、座標轉換、佈局規則以及最新 MCP 說明。 |
+| **`validation_manage`**| `action: "check_scene" \| "check_assets" \| "check_viewport" \| "capture_snapshot" \| "diff_snapshot" \| "list_snapshots" \| "restore_snapshot"`, `threshold`, `tag`, `snapshotId` | 自動化審計缺失 UITransform、損壞資產引用、越界節點，並支援視覺化快照回歸比對。 |
+| **`batch_execute`** | `operations: [{ tool, args }]`, `autoSave: true` | 程序內原子批次處理執行引擎，單次 IPC 事務順次執行多項操作。 |
+| **`project_manage`** | `action: "get_info" \| "build" \| "run" \| "compile_watch"` | 構建設定檢視、預覽伺服器啟動控制與 TypeScript 編譯狀態監聽。 |
+| **`scene_view_control`**| `action: "camera_focus" \| "camera_view" \| "grid_toggle" \| "gizmo_mode"`, `nodeUuid`, `viewMode` | 視埠攝影機聚焦、視角切換與編輯器網格/Gizmo 控制。 |
+| **`spine_manage`** | `action: "setup_rig" \| "query_animations" \| "set_animation"`, `nodeUuid`, `spineAssetPath`, `defaultAnimation` | 一鍵裝配 Spine 骨骼或 FastSpine 角色元件並設定動畫。 |
+| **`debug_manage`** | `action: "get_logs" \| "search_logs" \| "get_stats"` | 編輯器主控台日誌監控與效能指標統計。 |
+| **`preferences_manage`**| `action: "get" \| "set" \| "backup"`, `key`, `value` | 編輯器偏好設定讀取與配置。 |
+| **`broadcast_manage`** | `action: "subscribe" \| "emit" \| "history"`, `channel`, `message` | 編輯器內部訊息事件監聽與廣播。 |
 
 ---
 
-## 快速使用
+## 📖 標準 MCP 工作流程
 
-`pts-cc-mcp` 提供雙傳輸協議支援：**Streamable HTTP**（`/mcp`）與 **Server-Sent Events (SSE)**（`/sse`）。
+### A. 檢查場景或預製體節點樹
+* 使用 `scene_manage(action="inspect")` 審查格式化 JSON 或 Markdown 樹狀結構的場景層級、元件與屬性。
+* 使用 `scene_manage(action="hierarchy", includeComponents=true)` 列出目前活躍場景或已開啟預製體中的即時節點。
+
+### B. 修改目前活躍場景中的元件
+* 使用 `component_manage(action="update")` 進行深度屬性更新（如 `config.sid`、`config.data`）、巢狀 `@ccclass` 物件實例化以及資產陣列賦值（`onUpdates`、`onChanged`）。
+* 使用 `scene_manage(action="save")` 儲存場景修改。
+
+### C. 修改預製體中的元件/節點
+* **若預製體目前處於開啟/審查狀態：**
+  1. `node_manage(action="query")` 定位目標節點。
+  2. `component_manage(action="add")`（掛載新腳本）或 `component_manage(action="update")`（更新屬性值）。
+  3. `prefab_manage(action="save")` 儲存預製體。
+* **若預製體處於背景（未開啟）：**
+  1. `prefab_manage(action="enter", prefabPath="db://assets/...")`
+  2. `scene_manage(action="hierarchy")` / `node_manage(action="query")` 定位目標節點。
+  3. `component_manage(action="update")` 套用屬性變更。
+  4. `prefab_manage(action="save")`
+  5. `prefab_manage(action="exit")`
+* 或者直接使用原子化編輯：`prefab_manage(action="atomic_edit", prefabPath="db://assets/...", operations=[...])`
+
+### D. 類別反射與型別資訊查詢
+* 在賦值之前，使用 `component_manage(action="query_class_info")` 查詢元件的 `@ccclass` 反射屬性定義、預設值與 `@property` 中繼資料。
+
+### E. 宣告式 UI 建構
+* 使用 `ui_builder(action="build_tree", parent="Canvas", tree={...})` 單次呼叫即可建構完整的 UI 節點樹（面板、按鈕、文字、精靈、捲動視圖等），並自動計算掛載 UITransform 與 Widget 約束。
+
+### F. 時間軸關鍵影格動畫與 FBX 切分
+* 使用曲線插值直接創作 `.anim` 動畫剪輯：`anim_manage(action="clip_create", animPath="db://assets/anims/fade.anim", tracks=[...])`。
+* 套用動態預設：`anim_manage(action="clip_apply_preset", animPath="db://assets/anims/btn_pop.anim", preset="bounce_pop")`。
+* 切分多段 FBX 動畫模型：`anim_manage(action="slice_fbx", fbxPath="db://assets/models/char.fbx", takes=[...])`。
+
+### G. 場景與資產診斷及快照比對
+* 在修改前擷取基準場景快照：`validation_manage(action="capture_snapshot", tag="PreEdit")`。
+* 修改完成後比對場景快照：`validation_manage(action="diff_snapshot")`。
+* 審計場景層級佈局缺陷：`validation_manage(action="check_scene")`。
+* 掃描專案與場景中的失效 GUID 資產引用：`validation_manage(action="check_assets")`。
+
+---
+
+## ⚡ 快速開始
+
+`pts-cc-mcp` 預設運作在連接埠 `3121`，提供雙傳輸協議支援：**Streamable HTTP**（`/mcp`）與 **Server-Sent Events (SSE)**（`/sse`）。
 
 ### 1. Claude CLI 設定
 
 ```bash
 # Streamable HTTP（預設推薦）
-claude mcp add --transport http cocos-creator http://127.0.0.1:3000/mcp
+claude mcp add --transport http cocos-creator http://127.0.0.1:3121/mcp
 
 # 或透過 Server-Sent Events (SSE)
-claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
+claude mcp add --transport sse cocos-creator http://127.0.0.1:3121/sse
 ```
 
-### 2. Claude 用戶端設定
+### 2. Claude Desktop 用戶端設定
 
 ```json
 {
   "mcpServers": {
     "cocos-creator": {
       "type": "http",
-      "url": "http://127.0.0.1:3000/mcp"
+      "url": "http://127.0.0.1:3121/mcp"
     }
   }
 }
@@ -122,7 +142,7 @@ claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
   "mcpServers": {
     "cocos-creator": {
       "type": "sse",
-      "url": "http://127.0.0.1:3000/sse"
+      "url": "http://127.0.0.1:3121/sse"
     }
   }
 }
@@ -130,137 +150,112 @@ claude mcp add --transport sse cocos-creator http://127.0.0.1:3000/sse
 
 ### 3. Cursor 與 Windsurf 設定
 
-在 Cursor 或 Windsurf MCP 設定（`.cursor/mcp.json`）中：
+在 Cursor 或 Windsurf 的 MCP 設定（`.cursor/mcp.json`）中加入：
 
 ```json
 {
   "mcpServers": {
     "cocos-creator": {
-      "url": "http://127.0.0.1:3000/mcp"
+      "url": "http://127.0.0.1:3121/mcp"
     }
   }
 }
 ```
 
-*（如需使用 SSE 協議，亦可填入 `"url": "http://127.0.0.1:3000/sse"`）。*
+---
+
+## ⚠️ 前置需求與必需同級依賴
+
+> **重要提示：`pts-cc-mcp` 要求專案中必須安裝 `pts-core` 擴充套件。**
+>
+> **為什麼必須安裝 `pts-core`？**  
+> Cocos Creator 3.8+ 採用多程序架構，其中**編輯器主程序**（`pts-cc-mcp` 運作環境）與**場景執行程序**（運作遊戲場景、元件實例與即時 `@ccclass` 引擎環境）完全隔離。  
+>
+> `pts-cc-mcp` 透過向引擎發送 IPC 請求執行場景指令：`Editor.Message.request('scene', 'execute-scene-script', { name: 'pts-core', method: '...' })`。該場景腳本執行器（`src/_cc.js`）直接代管在 `pts-core` 外掛中。  
+>
+> 若缺少 `pts-core`，所有依賴即時場景執行期的工具（如 `component_*`、`node_manage`、`scene_manage`、`ui_builder` 和 `validation_manage`）將無法與場景節點進行互動。
 
 ---
 
-## ⚠️ 前置要求與必需對等依賴
-
-> **重要提示：`pts-cc-mcp` 依賴專案中已安裝的 `pts-core` 擴充功能。**
->
-> **為什麼必須安裝 `pts-core`？**  
-> Cocos Creator 3.8+ 採用多程序架構，其中**編輯器主程序**（`pts-cc-mcp` 執行環境）與**場景執行程序**（執行遊戲場景、元件實體與 live `@ccclass` 引擎環境）完全隔離。  
->
-> `pts-cc-mcp` 透過向引擎發送 IPC 訊息執行場景指令：`Editor.Message.request('scene', 'execute-scene-script', { name: 'pts-core', method: '...' })`。該場景腳本執行器（`src/_cc.js`）直接託管在 `pts-core` 外掛中。  
->
-> 如果缺少 `pts-core`，所有依賴活躍場景執行時期的工具（如 `component_*`、`node_node_transform`、`scene_inspect_scene`、`game_*` 和 `component_query_class_info`）將無法與場景節點互動。
-
-> **首次安裝或升級前必讀：**  
-> 請務必刪除目前專案 `settings/` 目錄下的 `mcp-server.json` 和 `tool-manager.json` 兩個檔案，否則外掛的工具清單快取可能會導致顯示異常！  
-> 檔案路徑：`<Project>/settings/mcp-server.json` 與 `<Project>/settings/tool-manager.json`。  
-> 刪除這兩個檔案後，重新開啟擴充功能面板即可自動重新同步全部工具。
-
-## 安裝說明
+## 安裝與設定
 
 ### 1. 放置外掛檔案
-
-確保將 `pts-core` 和 `pts-cc-mcp` 兩個擴充功能均放置在 Cocos Creator 專案的 `extensions/` 目錄下：
+確保將 `pts-core` 與 `pts-cc-mcp` 兩個擴充套件均放置在 Cocos Creator 專案的 `extensions/` 目錄下：
 
 ```
-你的專案/
+YourProject/
 ├── assets/
 ├── extensions/
 │   ├── pts-core/                  <- 必需：核心引擎與場景腳本執行時期 (_cc.js)
 │   │   ├── src/_cc.js
-│   │   ├── package.json
-│   │   └── ...
-│   └── pts-cc-mcp/                <- MCP 伺服器與工具提供方
+│   │   └── package.json
+│   └── pts-cc-mcp/                <- MCP 伺服器端與工具提供方
 │       ├── source/
 │       ├── dist/
-│       ├── package.json
-│       └── ...
-├── settings/
-└── ...
+│       └── package.json
+└── settings/
 ```
 
-### 2. 安裝相依套件並建置外掛
-
+### 2. 安裝依賴並構建外掛
 ```bash
-# 1. 配置 pts-core（若從原始碼建置）
+# 1. 設定 pts-core（若從原始碼構建）
 cd extensions/pts-core
 npm install
 npm run build
 
-# 2. 配置 pts-cc-mcp
+# 2. 設定 pts-cc-mcp
 cd ../pts-cc-mcp
 npm install
 npm run build
 ```
 
 ### 3. 在 Cocos Creator 中啟用外掛
-
-1. 重新啟動 Cocos Creator 或重新整理擴充功能管理器（**擴充功能 > 擴充功能管理器**）。
-2. 確認 **pts-core** 和 **pts-cc-mcp** 兩個擴充功能均已啟用。
-3. 點擊 `擴充功能 > pTS MCP Server` 開啟控制面板。
-4. 預設執行連接埠為 `3000`（可在面板中自訂設定）。
+1. 重啟 Cocos Creator 或重新整理擴充套件管理器（**擴充套件 > 擴充套件管理器**）。
+2. 確認 **pts-core** 與 **pts-cc-mcp** 兩個擴充套件均處於啟用狀態。
+3. 點擊選單列 `擴充套件 > pTS MCP Server` 開啟控制面板。
+4. 伺服器端預設運作在連接埠 `3121`（可在面板中自訂配置）。
 
 ---
 
-## 開發
+## 專案結構
 
-### 專案結構
 ```
 pts-cc-mcp/
-├── source/                    # TypeScript 原始檔
-│   ├── main.ts               # 外掛主程序入口
-│   ├── mcp-server.ts         # MCP 協定服務端實作
-│   ├── settings.ts           # 設定管理
-│   ├── types/                # 型別定義
-│   ├── utils/                # 工具庫（智慧資源解析、Schema 相容、JSON 修正）
-│   ├── tools/                # 工具模組實作
-│   │   ├── animgraph-tools.ts
-│   │   ├── batch-tools.ts
-│   │   ├── scene-tools.ts
-│   │   ├── node-tools.ts
-│   │   ├── component-tools.ts
-│   │   ├── prefab-tools.ts
-│   │   ├── project-tools.ts
-│   │   ├── debug-tools.ts
-│   │   ├── preferences-tools.ts
-│   │   ├── server-tools.ts
-│   │   ├── broadcast-tools.ts
-│   │   ├── scene-view-tools.ts
-│   │   ├── reference-image-tools.ts
-│   │   └── asset-advanced-tools.ts
-│   ├── panels/               # UI 面板實作
-│   └── test/                 # 測試用例
+├── source/                    # TypeScript 原始碼
+│   ├── main.ts               # 外掛入口與引導自檢
+│   ├── mcp-server.ts         # Streamable HTTP 與 SSE 傳輸層
+│   ├── settings.ts           # 設定與配置管理
+│   ├── types/                # TypeScript 型別定義
+│   ├── utils/                # 輔助工具庫
+│   │   ├── agents-doc-generator.ts # AGENTS.md 範本與文件同步產生器
+│   │   ├── asset-resolver.ts       # 智慧子資產 UUID 解析器
+│   │   ├── json-utils.ts           # 防禦性 JSON 解析與容錯修復
+│   │   └── i18n.ts                 # 多語言國際化翻譯引擎
+│   ├── tools/                # 子系統與統一意圖工具實現
+│   │   ├── intent-dispatcher.ts    # 16 意圖 API 調度器與操作碼路由
+│   │   ├── ui-builder-tools.ts     # 宣告式一鍵 UI 建構器
+│   │   ├── knowledge-tools.ts      # 離線反射知識庫
+│   │   ├── animation-tools.ts      # AnimationClip 動畫與 FBX 切分編輯器
+│   │   ├── validation-tools.ts     # 場景診斷與快照回歸比對
+│   │   ├── batch-tools.ts          # 原子批次處理執行引擎
+│   │   ├── scene-tools.ts          # 場景生命週期管理
+│   │   ├── node-tools.ts           # 節點變換與層級操作
+│   │   ├── component-tools.ts      # 元件反射與屬性更新器
+│   │   ├── prefab-tools.ts         # 預製體編輯會話棧與原子編輯
+│   │   ├── asset-advanced-tools.ts # 資產資料庫檢索與智慧解析
+│   │   ├── project-tools.ts        # 構建與預覽執行
+│   │   ├── debug-tools.ts          # 主控台日誌與 TS 編譯器監控
+│   │   └── preferences-tools.ts    # 使用者偏好設定管理
+│   └── panels/               # 基於 Vue 3 的控制面板與內建工具測試器
 ├── dist/                     # 編譯輸出目錄
-├── static/                   # 靜態資源
-├── i18n/                     # 國際化語言包
-├── package.json              # 外掛設定
-└── tsconfig.json             # TypeScript 設定
-```
-
-### 從原始碼建置
-
-```bash
-# 開發監視模式
-npm run watch
-
-# 正式建置
-npm run build
+├── static/                   # 靜態資源（圖示、樣式、範本）
+├── i18n/                     # 國際化語言字典
+├── package.json              # 擴充套件描述資訊與貢獻點
+└── tsconfig.json             # TypeScript 構建配置檔案
 ```
 
 ---
-
-## 系統需求
-
-- Cocos Creator 3.8.6 或更高版本
-- Node.js（Cocos Creator 自帶）
-- TypeScript（開發相依套件）
 
 ## 授權條款
 
-本外掛供 Cocos Creator 專案使用，原始碼一併打包，可用於學習和開發。
+本外掛基於 MIT 授權條款開源，專為 Cocos Creator 遊戲開發打造。

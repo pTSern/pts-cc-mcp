@@ -80,6 +80,20 @@ Before performing any manual file editing on \`.scene\` or \`.prefab\` assets:
 
 #### D. Class Reflection & Types
 * Use \`component_manage(action="query_class_info")\` to inspect \`@ccclass\` reflection attributes, default values, and \`@property\` metadata before assigning values.
+
+#### E. Declarative UI Generation
+* Use \`ui_builder(action="build_tree", parent="Canvas", tree={...})\` to construct complete UI hierarchies (Panels, Buttons, Labels, Sprites, ScrollViews) with auto-computed UITransforms and Widget constraints in a single atomic call.
+
+#### F. Timeline Keyframe Animation & FBX Slicing
+* Author \`.anim\` clips with property curves: \`anim_manage(action="clip_create", animPath="db://assets/anims/fade.anim", tracks=[...])\`.
+* Apply motion presets: \`anim_manage(action="clip_apply_preset", animPath="db://assets/anims/btn_pop.anim", preset="bounce_pop")\`.
+* Slice multi-take FBX models: \`anim_manage(action="slice_fbx", fbxPath="db://assets/models/char.fbx", takes=[...])\`.
+
+#### G. Scene & Asset Diagnostics & Regression Diffing
+* Capture baseline scene snapshot before modifications: \`validation_manage(action="capture_snapshot", tag="PreEdit")\`.
+* Compare scene against snapshot after edits: \`validation_manage(action="diff_snapshot")\`.
+* Audit scene hierarchy for layout bugs: \`validation_manage(action="check_scene")\`.
+* Scan project and scene for broken GUID references: \`validation_manage(action="check_assets")\`.
 `;
 }
 
