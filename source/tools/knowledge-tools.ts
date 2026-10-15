@@ -1,4 +1,9 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { ToolDefinition, ToolResponse, ToolExecutor } from '../types';
+import { generateAgentsDocContent, generateMcpToolExplanationSnippet } from '../utils/agents-doc-generator';
+
+declare const Editor: any;
 
 export interface ComponentKnowledge {
     className: string;
@@ -399,14 +404,14 @@ export class KnowledgeTools implements ToolExecutor {
         return [
             {
                 name: 'knowledge_query',
-                description: 'COCOS CREATOR 3.8 KNOWLEDGE BASE: Offline in-memory architecture reference and reflection tables for Cocos Creator 3.8 components, coordinate systems, layout patterns, and best practices. Eliminates API hallucinations.',
+                description: 'COCOS CREATOR 3.8 KNOWLEDGE BASE: Offline in-memory architecture reference, reflection tables, and MCP tool specification guides for AI agents. Eliminates API hallucinations and keeps AGENTS.md synchronized.',
                 inputSchema: {
                     type: 'object',
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['query_component', 'query_rules', 'query_layout_patterns', 'query_coordinates', 'list_topics'],
-                            description: 'Action opcode: "query_component" = get component property dictionary | "query_rules" = architectural rules | "query_layout_patterns" = UI patterns | "query_coordinates" = coordinate transformation specs | "list_topics" = list available topics'
+                            enum: ['query_component', 'query_rules', 'query_layout_patterns', 'query_coordinates', 'list_topics', 'get_mcp_guide', 'check_agents_doc', 'sync_agents_doc'],
+                            description: 'Action opcode: "query_component" = component property dictionary | "query_rules" = architectural rules | "query_layout_patterns" = UI patterns | "query_coordinates" = coordinate transformation specs | "list_topics" = list topics | "get_mcp_guide" = get complete MCP tool specification markdown | "check_agents_doc" = check if AGENTS.md exists & has MCP explanation | "sync_agents_doc" = auto-write or append MCP guide into AGENTS.md'
                         },
                         className: {
                             type: 'string',
@@ -421,6 +426,11 @@ export class KnowledgeTools implements ToolExecutor {
                             type: 'string',
                             enum: ['dialog', 'hud', 'list', 'grid'],
                             description: 'UI layout pattern (for query_layout_patterns action)'
+                        },
+                        autoWrite: {
+                            type: 'boolean',
+                            default: true,
+                            description: 'For sync_agents_doc: whether to directly write/append to AGENTS.md file'
                         }
                     },
                     required: ['action']
@@ -441,20 +451,147 @@ export class KnowledgeTools implements ToolExecutor {
                 return this.handleQueryPatterns(args?.pattern);
             case 'query_coordinates':
                 return this.handleQueryRules('coordinates');
+            case 'get_mcp_guide':
+                return this.handleGetMcpGuide();
+            case 'check_agents_doc':
+                return this.handleCheckAgentsDoc();
+            case 'sync_agents_doc':
+                return this.handleSyncAgentsDoc(args?.autoWrite !== false);
             case 'list_topics':
                 return {
                     success: true,
                     data: {
                         availableComponents: Object.keys(this.componentCatalog),
                         availableRules: Object.keys(this.rulesCatalog),
-                        availablePatterns: Object.keys(this.patternCatalog)
+                        availablePatterns: Object.keys(this.patternCatalog),
+                        mcpActions: ['get_mcp_guide', 'check_agents_doc', 'sync_agents_doc']
                     }
                 };
             default:
                 return {
                     success: false,
-                    error: `Unknown action: "${action}". Valid actions: ["query_component", "query_rules", "query_layout_patterns", "query_coordinates", "list_topics"]`
+                    error: `Unknown action: "${action}". Valid actions: ["query_component", "query_rules", "query_layout_patterns", "query_coordinates", "get_mcp_guide", "check_agents_doc", "sync_agents_doc", "list_topics"]`
                 };
+        }
+    }
+
+    private handleGetMcpGuide(): ToolResponse {
+        const snippet = generateMcpToolExplanationSnippet();
+        const fullDoc = generateAgentsDocContent();
+        let exists = false;
+        let hasMcpSpec = false;
+        let docPath = '';
+
+        try {
+            if (typeof Editor !== 'undefined' && Editor.Project && Editor.Project.path) {
+                docPath = path.join(Editor.Project.path, 'AGENTS.md');
+                if (fs.existsSync(docPath)) {
+                    exists = true;
+                    const content = fs.readFileSync(docPath, 'utf8');
+                    hasMcpSpec = content.includes('pts-cc-mcp') || content.includes('scene_manage');
+                }
+            }
+        } catch {}
+
+        return {
+            success: true,
+            message: 'Retrieved pts-cc-mcp tools specification guide',
+            data: {
+                agentsDocExists: exists,
+                hasMcpSpec: hasMcpSpec,
+                agentsDocPath: docPath,
+                instruction: 'If AGENTS.md in your project root is missing this explanation, append or write the markdown below into AGENTS.md.',
+                markdown: snippet,
+                fullAgentsDoc: fullDoc
+            }
+        };
+    }
+
+    private handleCheckAgentsDoc(): ToolResponse {
+        let exists = false;
+        let hasMcpSpec = false;
+        let docPath = '';
+
+        try {
+            if (typeof Editor !== 'undefined' && Editor.Project && Editor.Project.path) {
+                docPath = path.join(Editor.Project.path, 'AGENTS.md');
+                if (fs.existsSync(docPath)) {
+                    exists = true;
+                    const content = fs.readFileSync(docPath, 'utf8');
+                    hasMcpSpec = content.includes('pts-cc-mcp') || content.includes('scene_manage');
+                }
+            }
+        } catch (e: any) {
+            return { success: false, error: `Failed to check AGENTS.md: ${e.message}` };
+        }
+
+        return {
+            success: true,
+            data: {
+                exists,
+                hasMcpSpec,
+                path: docPath,
+                message: !exists
+                    ? 'AGENTS.md does not exist in project root. Call sync_agents_doc or write the MCP spec into AGENTS.md.'
+                    : (!hasMcpSpec
+                        ? 'AGENTS.md exists but lacks pts-cc-mcp tool documentation. Call sync_agents_doc or append snippet to AGENTS.md.'
+                        : 'AGENTS.md contains pts-cc-mcp documentation.')
+            }
+        };
+    }
+
+    private handleSyncAgentsDoc(autoWrite: boolean = true): ToolResponse {
+        try {
+            if (typeof Editor === 'undefined' || !Editor.Project || !Editor.Project.path) {
+                return { success: false, error: 'Editor.Project.path not available' };
+            }
+            const docPath = path.join(Editor.Project.path, 'AGENTS.md');
+            const snippet = generateMcpToolExplanationSnippet();
+            const fullDoc = generateAgentsDocContent();
+
+            if (!fs.existsSync(docPath)) {
+                if (autoWrite) {
+                    fs.writeFileSync(docPath, fullDoc, 'utf8');
+                    return {
+                        success: true,
+                        message: `Created AGENTS.md with complete pts-cc-mcp specification at ${docPath}`,
+                        data: { path: docPath, action: 'created' }
+                    };
+                } else {
+                    return {
+                        success: true,
+                        message: 'AGENTS.md missing. Here is the full content to write.',
+                        data: { path: docPath, content: fullDoc }
+                    };
+                }
+            } else {
+                const existing = fs.readFileSync(docPath, 'utf8');
+                if (existing.includes('pts-cc-mcp') || existing.includes('scene_manage')) {
+                    return {
+                        success: true,
+                        message: 'AGENTS.md already contains pts-cc-mcp tool documentation.',
+                        data: { path: docPath, action: 'already_up_to_date' }
+                    };
+                }
+
+                if (autoWrite) {
+                    const updated = existing.trimEnd() + '\n\n---\n\n' + snippet + '\n';
+                    fs.writeFileSync(docPath, updated, 'utf8');
+                    return {
+                        success: true,
+                        message: `Appended pts-cc-mcp tool specification to existing AGENTS.md at ${docPath}`,
+                        data: { path: docPath, action: 'appended' }
+                    };
+                } else {
+                    return {
+                        success: true,
+                        message: 'AGENTS.md is missing MCP documentation. Here is the snippet to append.',
+                        data: { path: docPath, snippetToAppend: snippet }
+                    };
+                }
+            }
+        } catch (e: any) {
+            return { success: false, error: `Failed to sync AGENTS.md: ${e.message}` };
         }
     }
 

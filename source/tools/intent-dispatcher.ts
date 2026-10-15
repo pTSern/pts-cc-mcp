@@ -263,18 +263,19 @@ export class IntentDispatcher {
             // 8. Knowledge Base
             {
                 name: 'knowledge_query',
-                description: 'COCOS CREATOR 3.8 KNOWLEDGE BASE: Offline in-memory architecture reference and reflection tables for Cocos Creator 3.8 components, coordinate systems, layout patterns, and best practices. Eliminates API hallucinations.',
+                description: 'COCOS CREATOR 3.8 KNOWLEDGE BASE: Offline in-memory architecture reference, reflection tables, and MCP tool specification guides for AI agents. Eliminates API hallucinations and keeps AGENTS.md synchronized.',
                 inputSchema: {
                     type: 'object',
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['query_component', 'query_rules', 'query_layout_patterns', 'query_coordinates', 'list_topics'],
-                            description: 'Knowledge action opcode'
+                            enum: ['query_component', 'query_rules', 'query_layout_patterns', 'query_coordinates', 'list_topics', 'get_mcp_guide', 'check_agents_doc', 'sync_agents_doc'],
+                            description: 'Knowledge action opcode: "query_component" = component properties | "query_rules" = architecture rules | "query_layout_patterns" = UI patterns | "query_coordinates" = coordinates | "list_topics" = list topics | "get_mcp_guide" = get complete MCP tool specification markdown | "check_agents_doc" = check if AGENTS.md exists & has MCP explanation | "sync_agents_doc" = auto-write or append MCP guide into AGENTS.md'
                         },
                         className: { type: 'string', description: 'Component class name (e.g. "cc.Sprite", "cc.Label", "cc.Button", "cc.UITransform", "cc.Widget", "cc.Layout", "cc.ScrollView", "sp.Skeleton", "cc.Camera")' },
                         topic: { type: 'string', enum: ['coordinates', 'resolution', 'anchors', 'lifecycle', 'subassets'], description: 'Architectural topic' },
-                        pattern: { type: 'string', enum: ['dialog', 'hud', 'list', 'grid'], description: 'UI pattern' }
+                        pattern: { type: 'string', enum: ['dialog', 'hud', 'list', 'grid'], description: 'UI pattern' },
+                        autoWrite: { type: 'boolean', default: true, description: 'For sync_agents_doc: directly write or append to AGENTS.md' }
                     },
                     required: ['action']
                 }
@@ -793,6 +794,9 @@ export class IntentDispatcher {
         }
         if (toolName === 'inspect_scene' || toolName === 'scene_inspect_scene') {
             return await this.dispatchIntent('scene_manage', { action: 'inspect', ...args });
+        }
+        if (toolName === 'get_mcp_guide' || toolName === 'mcp_doc_query' || toolName === 'check_agents_doc' || toolName === 'sync_agents_doc') {
+            return await this.dispatchIntent('knowledge_query', { action: toolName === 'mcp_doc_query' ? 'get_mcp_guide' : toolName, ...args });
         }
 
         // Map category prefix to internal tool registry key

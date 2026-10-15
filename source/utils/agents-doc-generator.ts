@@ -1,23 +1,22 @@
 /**
- * Utility to generate standard AGENTS.md for Cocos Creator AI agents
+ * Utility to generate standard AGENTS.md and MCP tool documentation snippets for Cocos Creator AI agents
  */
-export function generateAgentsDocContent(): string {
-    return `# AI Agent Operating Guidelines: Cocos Creator MCP Integration
 
-## 🚨 Mandatory Rule: Prefer MCP for Cocos Creator Editor Interactions
+export const MCP_DOC_NOTICE = `> [!IMPORTANT]
+> **AI Agent Self-Check Instruction (Mandatory)**:
+> Check if this \`AGENTS.md\` file contains the complete explanation of the \`pts-cc-mcp\` tools (all 16 Unified Intent APIs, parameters, and workflows).
+> - **If YES (Already Present)**: Proceed directly with your tasks using the MCP tools as documented below.
+> - **If NO (Missing or Incomplete)**: Call the MCP tool \`knowledge_query(action="get_mcp_guide")\` to fetch the complete MCP tools explanation, and write/append it to this \`AGENTS.md\` file immediately before proceeding!`;
+
+export function generateMcpToolExplanationSnippet(): string {
+    return `## 🛠️ Cocos Creator MCP Integration (pts-cc-mcp)
+
+### 1. Mandatory Rule: Prefer MCP for Cocos Creator Editor Interactions
 
 Whenever you need to inspect, query, create, modify, or save Cocos Creator **Scenes**, **Nodes**, **Components**, **Prefabs**, or **Assets**:
 **YOU MUST USE MCP TOOLS TO INTERACT WITH THE COCOS CREATOR EDITOR IF POSSIBLE.**
 
-## 🚨 Mandatory Rule: Always Generate Markdown (.md) Files for Summaries & Plans
-Whenever creating plans, architecture proposals, or task summaries, **ALWAYS** generate them as dedicated Markdown (\`.md\`) files or artifacts.
-- The user prefers opening and reading \`.md\` files in their external viewer app instead of reading long walls of text in the terminal.
-- Never dump full multi-page summaries or plans directly into the chat text.
-- Provide a clear, clickable \`file:///...\` link and concise high-level bullet points in the chat.
-
----
-
-### 1. Definition of "If Possible"
+#### Definition of "If Possible":
 Before performing any manual file editing on \`.scene\` or \`.prefab\` assets:
 1. **Tool Existence:** Check if MCP tools for \`pts-cc-mcp\` (or \`cocos-creator\`) are registered in your active toolset.
 2. **Server Connectivity:** Verify the MCP server is running and reachable (e.g. calling \`scene_manage\` or \`node_manage\`).
@@ -38,7 +37,7 @@ Before performing any manual file editing on \`.scene\` or \`.prefab\` assets:
 | **\`ui_builder\`** | \`action: "build_tree" \\| "create_dialog" \\| "create_button" \\| "create_list"\`, \`tree\`, \`parent\` | Declarative 1-shot UI generation with auto-UITransform, Widget constraints, and Layouts. |
 | **\`anim_manage\`** | \`action: "clip_inspect" \\| "clip_create" \\| "clip_add_track" \\| "clip_add_keyframe" \\| "clip_apply_preset" \\| "slice_fbx" \\| "graph_inspect"\`, \`animPath\`, \`property\`, \`time\`, \`value\` | Timeline AnimationClip editing, property curves, easing modes, animation events, presets, FBX slicing, and AnimGraph state machines. |
 | **\`asset_manage\`** | \`action: "query" \\| "resolve" \\| "import" \\| "delete" \\| "dependencies"\`, \`folder\`, \`assetPath\`, \`assets\` | Asset discovery, dependency inspection, and smart sub-asset resolution (\`@spriteFrame\`, \`@texture\`). |
-| **\`knowledge_query\`** | \`action: "query_component" \\| "query_rules" \\| "query_layout_patterns" \\| "list_topics"\`, \`className\`, \`topic\` | Offline architecture reference for components, coordinates, and rules to prevent hallucinations. |
+| **\`knowledge_query\`** | \`action: "query_component" \\| "query_rules" \\| "query_layout_patterns" \\| "get_mcp_guide" \\| "list_topics"\`, \`className\`, \`topic\` | Offline architecture reference for components, coordinates, rules, and live MCP documentation. |
 | **\`validation_manage\`**| \`action: "check_scene" \\| "check_assets" \\| "check_viewport"\`, \`threshold\` | Automated audit for missing UITransforms, corrupt assets, and out-of-bounds nodes. |
 | **\`batch_execute\`** | \`operations: [{ tool, args }]\`, \`autoSave: true\` | In-process atomic batch execution running multiple operations in a single IPC transaction. |
 | **\`project_manage\`** | \`action: "get_info" \\| "build" \\| "run" \\| "compile_watch"\` | Build settings, preview server control, and TypeScript compilation watcher. |
@@ -81,5 +80,22 @@ Before performing any manual file editing on \`.scene\` or \`.prefab\` assets:
 
 #### D. Class Reflection & Types
 * Use \`component_manage(action="query_class_info")\` to inspect \`@ccclass\` reflection attributes, default values, and \`@property\` metadata before assigning values.
+`;
+}
+
+export function generateAgentsDocContent(): string {
+    return `# AI Agent Operating Guidelines: Cocos Creator MCP Integration
+
+${MCP_DOC_NOTICE}
+
+## 🚨 Mandatory Rule: Always Generate Markdown (.md) Files for Summaries & Plans
+Whenever creating plans, architecture proposals, or task summaries, **ALWAYS** generate them as dedicated Markdown (\`.md\`) files or artifacts.
+- The user prefers opening and reading \`.md\` files in their external viewer app instead of reading long walls of text in the terminal.
+- Never dump full multi-page summaries or plans directly into the chat text.
+- Provide a clear, clickable \`file:///...\` link and concise high-level bullet points in the chat.
+
+---
+
+${generateMcpToolExplanationSnippet()}
 `;
 }
