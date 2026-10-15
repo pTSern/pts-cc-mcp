@@ -16,6 +16,7 @@ import {
     McpRequestHeaders
 } from './tool-call-context';
 import { EXTENSION_NAME } from './constants';
+import { IntentDispatcher } from './tools/intent-dispatcher';
 
 declare const Editor: any;
 
@@ -37,6 +38,7 @@ export class MCPServer {
     private httpServer: http.Server | null = null;
     private mcpServer: McpServer | null = null;
     private tools: Record<string, any> = {};
+    private intentDispatcher: IntentDispatcher | null = null;
     private toolsList: ToolDefinition[] = [];
     private enabledTools: any[] = []; // Store list of enabled tools
     private streamableSessions: Map<string, StreamableSession> = new Map();
@@ -47,6 +49,7 @@ export class MCPServer {
         MCPServer.instance = this;
         this.settings = settings;
         this.initializeTools();
+        this.setupTools();
     }
 
     public static getInstance(): MCPServer | null {
@@ -83,7 +86,9 @@ export class MCPServer {
                 nexus: './tools/nexus-tools',
                 game: './tools/game-tools',
                 animgraph: './tools/animgraph-tools',
-                batch: './tools/batch-tools'
+                batch: './tools/batch-tools',
+                knowledge: './tools/knowledge-tools',
+                uiBuilder: './tools/ui-builder-tools'
             };
 
             for (const [key, modPath] of Object.entries(toolModules)) {
@@ -99,7 +104,9 @@ export class MCPServer {
                     console.error(`[MCPServer] Failed to load tool ${key}:`, e);
                 }
             }
-            console.log('[MCPServer] Tools initialized successfully');
+
+            this.intentDispatcher = new IntentDispatcher(this.tools);
+            console.log('[MCPServer] Tools & Unified Intent Dispatcher initialized successfully');
         } catch (error) {
             console.error('[MCPServer] Error initializing tools:', error);
             throw error;
@@ -149,8 +156,27 @@ export class MCPServer {
     private setupTools(): void {
         this.toolsList = [];
 
-        // If no tool configuration is enabled, return all tools
-        if (!this.enabledTools || this.enabledTools.length === 0) {
+        // Primary: Serve the 16 Unified Intent Tools
+        if (this.intentDispatcher) {
+            const intentTools = this.intentDispatcher.getIntentTools();
+            if (!this.enabledTools || this.enabledTools.length === 0) {
+                this.toolsList = [...intentTools];
+            } else {
+                const enabledNames = new Set(this.enabledTools.map(t => t.name || `${t.category}_${t.name}`));
+                this.toolsList = intentTools.filter(tool => {
+                    if (enabledNames.has(tool.name)) return true;
+                    const baseCategory = tool.name.split('_')[0];
+                    for (const en of enabledNames) {
+                        if (en.startsWith(baseCategory) || en.startsWith(tool.name)) return true;
+                    }
+                    return false;
+                });
+                if (this.toolsList.length === 0) {
+                    this.toolsList = [...intentTools];
+                }
+            }
+        } else {
+            // Fallback to legacy categories if dispatcher is not ready
             for (const [category, toolSet] of Object.entries(this.tools)) {
                 const tools = toolSet.getTools();
                 for (const tool of tools) {
@@ -161,28 +187,11 @@ export class MCPServer {
                     });
                 }
             }
-        } else {
-            // Filter according to enabled tool configuration
-            const enabledToolNames = new Set(this.enabledTools.map(tool => `${tool.category}_${tool.name}`));
-
-            for (const [category, toolSet] of Object.entries(this.tools)) {
-                const tools = toolSet.getTools();
-                for (const tool of tools) {
-                    const toolName = `${category}_${tool.name}`;
-                    if (enabledToolNames.has(toolName)) {
-                        this.toolsList.push({
-                            name: toolName,
-                            description: tool.description,
-                            inputSchema: tool.inputSchema
-                        });
-                    }
-                }
-            }
         }
 
         // Initialize MCP SDK server
         this.mcpServer = this.createMcpServerInstance();
-        console.log(`[MCPServer] Setup tools: ${this.toolsList.length} tools available via @modelcontextprotocol/sdk`);
+        console.log(`[MCPServer] Setup tools: ${this.toolsList.length} Intent Tools available via @modelcontextprotocol/sdk`);
     }
 
     public createMcpServerInstance(): McpServer {
@@ -326,7 +335,21 @@ export class MCPServer {
     }
 
     public async executeToolCall(toolName: string, args: any): Promise<any> {
-        // Direct tool aliases
+        if (this.intentDispatcher) {
+            const start = Date.now();
+            try {
+                const result = await this.intentDispatcher.execute(toolName, args);
+                if (this.settings.enableDebugLog) {
+                    console.log(`[MCPServer] Executed ${toolName} via IntentDispatcher in ${Date.now() - start}ms`);
+                }
+                return result;
+            } catch (err: any) {
+                console.error(`[MCPServer] Failed ${toolName} in ${Date.now() - start}ms:`, err);
+                throw err;
+            }
+        }
+
+        // Direct tool aliases fallback
         if (toolName === 'editor_batch_execute' || toolName === 'batch_execute') {
             if (this.tools['batch']) {
                 return await this.tools['batch'].execute('execute', args);

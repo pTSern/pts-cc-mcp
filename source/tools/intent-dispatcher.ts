@@ -1,0 +1,782 @@
+import { ToolDefinition, ToolResponse } from '../types';
+
+export class IntentDispatcher {
+    private tools: Record<string, any>;
+
+    constructor(tools: Record<string, any>) {
+        this.tools = tools;
+    }
+
+    public getIntentTools(): ToolDefinition[] {
+        return [
+            // 1. Scene Management
+            {
+                name: 'scene_manage',
+                description: 'SCENE LIFECYCLE & HIERARCHY: Open, save, create, close, and inspect scenes; fetch scene hierarchy trees; and execute scene scripts or component methods.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['get_current', 'get_list', 'open', 'save', 'save_as', 'create', 'close', 'hierarchy', 'inspect', 'stats', 'execute_script', 'execute_component_method'],
+                            description: 'Scene action opcode'
+                        },
+                        scenePath: { type: 'string', description: 'Scene asset path (e.g. "db://assets/scenes/Game.scene")' },
+                        sceneName: { type: 'string', description: 'New scene name (for create action)' },
+                        savePath: { type: 'string', description: 'Save location path (e.g. "db://assets/scenes/NewScene.scene")' },
+                        path: { type: 'string', description: 'Destination path (for save_as action)' },
+                        includeComponents: { type: 'boolean', default: false, description: 'Include component details in hierarchy' },
+                        filterNode: { type: 'string', description: 'Filter hierarchy inspect to specific node name or UUID' },
+                        maxDepth: { type: 'number', default: 10, description: 'Maximum depth for hierarchy tree' },
+                        name: { type: 'string', description: 'Script target extension or method name' },
+                        method: { type: 'string', description: 'Script method name to execute' },
+                        uuid: { type: 'string', description: 'Component or node UUID' },
+                        args: { type: 'array', default: [], description: 'Arguments array for script or method' }
+                    },
+                    required: ['action']
+                }
+            },
+
+            // 2. Node Management
+            {
+                name: 'node_manage',
+                description: 'NODE OPERATIONS: Query, create, delete, duplicate, transform (position, rotation, scale, size, anchor), reparent, and update node properties.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['query', 'create', 'delete', 'duplicate', 'transform', 'reparent', 'set_active', 'clipboard'],
+                            description: 'Node action opcode'
+                        },
+                        nodeUuid: { type: 'string', description: 'Target node UUID (also accepts uuid)' },
+                        uuid: { type: 'string', description: 'Target node UUID' },
+                        queryType: { type: 'string', enum: ['find_by_name', 'find_by_path', 'get_children', 'get_parent', 'dump_tree', 'list_all'], default: 'find_by_name' },
+                        name: { type: 'string', description: 'Node name or search pattern' },
+                        path: { type: 'string', description: 'Node path query (e.g. "Canvas/Panel/Button")' },
+                        parentUuid: { type: 'string', description: 'Parent node UUID for create or reparent' },
+                        newParentUuid: { type: 'string', description: 'Destination parent UUID for reparent' },
+                        position: {
+                            type: 'object',
+                            properties: { x: { type: 'number' }, y: { type: 'number' }, z: { type: 'number' } },
+                            description: '3D/2D position coordinates'
+                        },
+                        rotation: {
+                            type: 'object',
+                            properties: { x: { type: 'number' }, y: { type: 'number' }, z: { type: 'number' } },
+                            description: 'Euler rotation angles in degrees'
+                        },
+                        scale: {
+                            type: 'object',
+                            properties: { x: { type: 'number' }, y: { type: 'number' }, z: { type: 'number' } },
+                            description: 'Scale factors'
+                        },
+                        size: {
+                            type: 'object',
+                            properties: { width: { type: 'number' }, height: { type: 'number' } },
+                            description: '2D content size (updates cc.UITransform automatically)'
+                        },
+                        anchor: {
+                            type: 'object',
+                            properties: { x: { type: 'number' }, y: { type: 'number' } },
+                            description: 'Anchor point (0.5, 0.5 is center)'
+                        },
+                        active: { type: 'boolean', description: 'Node active state' },
+                        is2D: { type: 'boolean', default: true, description: 'Whether node is 2D UI element' },
+                        clipboardAction: { type: 'string', enum: ['copy', 'cut', 'paste'], description: 'Clipboard operation' }
+                    },
+                    required: ['action']
+                }
+            },
+
+            // 3. Component Management
+            {
+                name: 'component_manage',
+                description: 'COMPONENT SYSTEM: Add, remove, query, inspect, deep-update properties, bind click events, and inspect @ccclass reflection schemas.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['add', 'remove', 'get', 'set_property', 'update', 'bind_event', 'list_types', 'query_class_info'],
+                            description: 'Component action opcode'
+                        },
+                        nodeUuid: { type: 'string', description: 'Target node UUID' },
+                        componentType: { type: 'string', description: 'Component class name (e.g. "cc.Sprite", "cc.Label", "cc.Button", "cc.Widget", "cc.Layout", "cc.UITransform")' },
+                        componentIndex: { type: 'number', description: 'Index if multiple components of same type exist' },
+                        property: { type: 'string', description: 'Property path (supports dot-notation, e.g. "spriteFrame", "contentSize.width")' },
+                        propertyType: { type: 'string', description: 'Property type: "string"|"number"|"boolean"|"color"|"vec2"|"vec3"|"size"|"spriteFrame"|"asset"' },
+                        value: { description: 'Value to assign to property' },
+                        properties: { type: 'object', description: 'Deep property map for update action' },
+                        targetNodeUuid: { type: 'string', description: 'Target node UUID for click event binding' },
+                        targetComponent: { type: 'string', description: 'Target component name for click event handler' },
+                        handler: { type: 'string', description: 'Target handler method name for click event' },
+                        customEventData: { type: 'string', description: 'Custom event data string' },
+                        className: { type: 'string', description: 'Class name to inspect for query_class_info' },
+                        category: { type: 'string', description: 'Component category filter for list_types' },
+                        autoSave: { type: 'boolean', default: true, description: 'Automatically save scene after update' }
+                    },
+                    required: ['action']
+                }
+            },
+
+            // 4. Prefab Management
+            {
+                name: 'prefab_manage',
+                description: 'PREFAB LIFECYCLE & EDITING: List, create, instantiate, enter/exit edit mode, save, unlink, apply/revert overrides, and atomic edit transactions.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['list', 'info', 'validate', 'create', 'delete', 'instantiate', 'unlink', 'apply', 'revert', 'enter', 'exit', 'save', 'atomic_edit'],
+                            description: 'Prefab action opcode'
+                        },
+                        prefabPath: { type: 'string', description: 'Prefab asset path (e.g. "db://assets/prefabs/Hero.prefab")' },
+                        folder: { type: 'string', default: 'db://assets', description: 'Folder to scan for prefabs' },
+                        nodeUuid: { type: 'string', description: 'Target node UUID' },
+                        parentUuid: { type: 'string', description: 'Parent node UUID for instantiation' },
+                        savePath: { type: 'string', description: 'Asset path when creating new prefab' },
+                        saveChanges: { type: 'boolean', default: true, description: 'Save changes upon exiting edit mode' },
+                        position: {
+                            type: 'object',
+                            properties: { x: { type: 'number' }, y: { type: 'number' }, z: { type: 'number' } },
+                            description: 'Instance position'
+                        },
+                        operations: {
+                            type: 'array',
+                            description: 'Batch operations array for atomic_edit action'
+                        }
+                    },
+                    required: ['action']
+                }
+            },
+
+            // 5. Declarative UI Builder
+            {
+                name: 'ui_builder',
+                description: 'DECLARATIVE UI BUILDER: Build complete multi-level UI hierarchies from a single JSON tree. Automatically adds cc.UITransform, cc.Widget constraints, cc.Layout formatting, buttons, and labels.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['build_tree', 'create_dialog', 'create_button', 'create_list', 'apply_widget', 'apply_layout'],
+                            description: 'UI Builder action opcode'
+                        },
+                        parent: { type: 'string', description: 'Parent node UUID, path, or "Canvas"' },
+                        tree: { type: 'object', description: 'Declarative JSON tree node definition' },
+                        title: { type: 'string', description: 'Dialog header title' },
+                        width: { type: 'number', description: 'Container width' },
+                        height: { type: 'number', description: 'Container height' },
+                        bgSpriteFrame: { type: 'string', description: 'Background sprite frame path/UUID' },
+                        buttons: { type: 'array', description: 'Dialog buttons definition array' },
+                        name: { type: 'string', description: 'Node name' },
+                        text: { type: 'string', description: 'Button text' },
+                        position: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' } } },
+                        size: { type: 'object', properties: { width: { type: 'number' }, height: { type: 'number' } } },
+                        nodeUuid: { type: 'string', description: 'Target node UUID' },
+                        alignFlags: { type: 'number', description: 'Widget align flags (15: Full Stretch)' },
+                        layoutType: { type: 'string', enum: ['NONE', 'HORIZONTAL', 'VERTICAL', 'GRID'] },
+                        autoSave: { type: 'boolean', default: true }
+                    },
+                    required: ['action']
+                }
+            },
+
+            // 6. Animation System
+            {
+                name: 'anim_manage',
+                description: 'ANIMATION SYSTEM: Inspect and edit .animgraph state machines, states, transitions, parameters, StateMachineComponents, and bulk migrate component types.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['graph_inspect', 'graph_add_component', 'graph_update_component', 'graph_remove_component', 'graph_batch_replace', 'clip_create', 'clip_edit_keyframe'],
+                            description: 'Animation action opcode'
+                        },
+                        animgraphPath: { type: 'string', description: 'Path to .animgraph asset' },
+                        stateName: { type: 'string', description: 'Target state name in animgraph' },
+                        componentType: { type: 'string', description: 'Component type to attach or update' },
+                        properties: { type: 'object', description: 'Properties object' },
+                        componentIndex: { type: 'number', description: 'Index of component' },
+                        fromType: { type: 'string', description: 'Source component class name for batch migration' },
+                        toType: { type: 'string', description: 'Target component class name for batch migration' }
+                    },
+                    required: ['action']
+                }
+            },
+
+            // 7. Asset Management
+            {
+                name: 'asset_manage',
+                description: 'ASSET MANAGEMENT: Query, search, resolve smart sub-assets (@spriteFrame, @texture), create, delete, import assets, analyze dependencies, and convert UUID to URL.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['query', 'resolve', 'create', 'delete', 'import', 'dependencies', 'uuid_to_url', 'url_to_uuid', 'save_meta'],
+                            description: 'Asset action opcode'
+                        },
+                        assetPath: { type: 'string', description: 'Smart asset path to resolve (e.g. "db://assets/textures/hero.png@spriteFrame")' },
+                        ccType: { type: 'string', description: 'Filter assets by Cocos class (e.g. "cc.ImageAsset", "cc.Prefab", "cc.Material")' },
+                        pattern: { type: 'string', description: 'Search pattern (e.g. "db://assets/**/*.png")' },
+                        folder: { type: 'string', default: 'db://assets', description: 'Folder to query' },
+                        urls: { type: 'array', items: { type: 'string' }, description: 'URLs to delete' },
+                        assets: { type: 'array', description: 'Assets to import [{ sourcePath, targetUrl }]' },
+                        overwrite: { type: 'boolean', default: false, description: 'Overwrite existing files' },
+                        uuid: { type: 'string', description: 'Asset UUID' },
+                        url: { type: 'string', description: 'Asset URL' },
+                        urlOrUUID: { type: 'string', description: 'Asset URL or UUID' },
+                        content: { type: 'string', description: 'File content or meta content' }
+                    },
+                    required: ['action']
+                }
+            },
+
+            // 8. Knowledge Base
+            {
+                name: 'knowledge_query',
+                description: 'COCOS CREATOR 3.8 KNOWLEDGE BASE: Offline in-memory architecture reference and reflection tables for Cocos Creator 3.8 components, coordinate systems, layout patterns, and best practices. Eliminates API hallucinations.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['query_component', 'query_rules', 'query_layout_patterns', 'query_coordinates', 'list_topics'],
+                            description: 'Knowledge action opcode'
+                        },
+                        className: { type: 'string', description: 'Component class name (e.g. "cc.Sprite", "cc.Label", "cc.Button", "cc.UITransform", "cc.Widget", "cc.Layout", "cc.ScrollView", "sp.Skeleton", "cc.Camera")' },
+                        topic: { type: 'string', enum: ['coordinates', 'resolution', 'anchors', 'lifecycle', 'subassets'], description: 'Architectural topic' },
+                        pattern: { type: 'string', enum: ['dialog', 'hud', 'list', 'grid'], description: 'UI pattern' }
+                    },
+                    required: ['action']
+                }
+            },
+
+            // 9. Validation & Diagnostics
+            {
+                name: 'validation_manage',
+                description: 'SCENE & ASSET VALIDATION: Audit scene node hierarchies for missing UITransforms, duplicate names, zero-size containers, out-of-bounds nodes, and corrupt asset references.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['check_scene', 'check_assets', 'check_viewport', 'validate_json'],
+                            description: 'Validation action opcode'
+                        },
+                        threshold: { type: 'number', default: 3000, description: 'Out-of-bounds pixel threshold for viewport check' },
+                        jsonString: { type: 'string', description: 'JSON string to validate/repair' }
+                    },
+                    required: ['action']
+                }
+            },
+
+            // 10. Atomic Batch Transactions
+            {
+                name: 'batch_execute',
+                description: 'IN-PROCESS ATOMIC BATCH TRANSACTION: Execute multiple tool operations in a single sequential in-process IPC transaction. Drastically reduces token usage and round-trips.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        operations: {
+                            type: 'array',
+                            description: 'Array of operations [{ tool: "node_manage", args: { ... } }]',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    tool: { type: 'string', description: 'Tool name' },
+                                    args: { type: 'object', description: 'Tool arguments' }
+                                },
+                                required: ['tool', 'args']
+                            }
+                        },
+                        stopOnError: { type: 'boolean', default: true, description: 'Halt sequence on error' },
+                        autoSave: { type: 'boolean', default: true, description: 'Automatically save scene after batch completes' }
+                    },
+                    required: ['operations']
+                }
+            },
+
+            // 11. Project Control & Compiler
+            {
+                name: 'project_manage',
+                description: 'PROJECT CONTROL & BUILD: Inspect project info, build settings, trigger preview or production builds, open build panel, and await TypeScript compilation.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['get_info', 'get_settings', 'update_settings', 'run', 'build', 'open_build_panel', 'compile_watch'],
+                            description: 'Project action opcode'
+                        },
+                        category: { type: 'string', description: 'Settings category' },
+                        platform: { type: 'string', description: 'Target platform (web-desktop, web-mobile, etc.)' },
+                        debug: { type: 'boolean', default: true, description: 'Debug build flag' },
+                        waitForCompile: { type: 'boolean', default: true, description: 'Await compilation completion' },
+                        timeoutMs: { type: 'number', default: 15000, description: 'Compilation wait timeout' }
+                    },
+                    required: ['action']
+                }
+            },
+
+            // 12. Scene View & Viewport Control
+            {
+                name: 'scene_view_control',
+                description: 'SCENE VIEWPORT CONTROL: Camera focus on node, 2D/3D view mode toggle, grid toggle, gizmo transform mode, and reference image overlays.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['camera_focus', 'camera_view', 'grid_toggle', 'gizmo_mode', 'reference_image'],
+                            description: 'Viewport control action opcode'
+                        },
+                        nodeUuid: { type: 'string', description: 'Node UUID to focus camera on' },
+                        viewMode: { type: 'string', enum: ['2D', '3D', 'top', 'front', 'left'] },
+                        visible: { type: 'boolean', description: 'Grid visibility' },
+                        mode: { type: 'string', enum: ['position', 'rotation', 'scale', 'rect'], description: 'Gizmo transform mode' },
+                        imagePath: { type: 'string', description: 'Reference image file path' },
+                        opacity: { type: 'number', default: 0.5, description: 'Reference image opacity' }
+                    },
+                    required: ['action']
+                }
+            },
+
+            // 13. Spine Character Rigging
+            {
+                name: 'spine_manage',
+                description: 'SPINE RIGGING: One-call setup for sp.Skeleton or FastSpine with asset binding, default animation, skin, loop mode, and UITransform sizing.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['setup_rig', 'query_animations', 'set_animation', 'set_skin'],
+                            default: 'setup_rig',
+                            description: 'Spine action opcode'
+                        },
+                        nodeUuid: { type: 'string', description: 'Target node UUID' },
+                        spineAssetPath: { type: 'string', description: 'Spine skeleton asset path (e.g. "db://assets/spine/hero.json")' },
+                        defaultAnimation: { type: 'string', description: 'Initial animation name (e.g. "idle", "walk")' },
+                        defaultSkin: { type: 'string', default: 'default', description: 'Initial skin name' },
+                        loop: { type: 'boolean', default: true, description: 'Loop animation' },
+                        premultipliedAlpha: { type: 'boolean', default: true },
+                        useFastSpine: { type: 'boolean', default: false, description: 'Use high-performance FastSpine component' }
+                    },
+                    required: ['nodeUuid']
+                }
+            },
+
+            // 14. Debug & Diagnostics
+            {
+                name: 'debug_manage',
+                description: 'DEBUG & SYSTEM: Inspect editor console logs, search project log files, get system performance statistics, and evaluate expressions.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['get_logs', 'clear_logs', 'read_log_file', 'system_info', 'compile_status'],
+                            description: 'Debug action opcode'
+                        },
+                        limit: { type: 'number', default: 50, description: 'Log count limit' },
+                        filter: { type: 'string', description: 'Filter pattern or level (error, warn, info)' },
+                        logType: { type: 'string', enum: ['project', 'editor'], default: 'project' },
+                        lines: { type: 'number', default: 100 }
+                    },
+                    required: ['action']
+                }
+            },
+
+            // 15. Preferences Management
+            {
+                name: 'preferences_manage',
+                description: 'EDITOR PREFERENCES: Read, set, and backup Cocos Creator user preferences.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['get', 'set', 'backup'],
+                            description: 'Preferences action opcode'
+                        },
+                        key: { type: 'string', description: 'Preference key' },
+                        value: { description: 'Preference value' },
+                        category: { type: 'string', description: 'Preference category' }
+                    },
+                    required: ['action']
+                }
+            },
+
+            // 16. Broadcast & Event Bus
+            {
+                name: 'broadcast_manage',
+                description: 'BROADCAST EVENT BUS: Subscribe to editor/scene events, emit broadcast events, and view event transmission history.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['subscribe', 'emit', 'history', 'clear'],
+                            description: 'Broadcast action opcode'
+                        },
+                        channel: { type: 'string', description: 'Event channel name' },
+                        data: { description: 'Payload data to broadcast' },
+                        limit: { type: 'number', default: 50 }
+                    },
+                    required: ['action']
+                }
+            }
+        ];
+    }
+
+    public isIntentTool(toolName: string): boolean {
+        const intentNames = new Set([
+            'scene_manage', 'node_manage', 'component_manage', 'prefab_manage',
+            'ui_builder', 'anim_manage', 'asset_manage', 'knowledge_query',
+            'validation_manage', 'batch_execute', 'project_manage', 'scene_view_control',
+            'spine_manage', 'debug_manage', 'preferences_manage', 'broadcast_manage'
+        ]);
+        return intentNames.has(toolName);
+    }
+
+    public async execute(toolName: string, args: any): Promise<ToolResponse> {
+        // 1. Direct Intent Dispatch
+        if (this.isIntentTool(toolName)) {
+            return await this.dispatchIntent(toolName, args);
+        }
+
+        // 2. Backward Compatibility Router for Legacy Tool Names
+        return await this.dispatchLegacyTool(toolName, args);
+    }
+
+    private async dispatchIntent(toolName: string, args: any): Promise<ToolResponse> {
+        const action = args?.action;
+
+        switch (toolName) {
+            case 'scene_manage': {
+                const sceneTools = this.tools['scene'];
+                if (!sceneTools) throw new Error('Scene tools not initialized');
+
+                if (action === 'hierarchy') {
+                    return await sceneTools.getSceneHierarchy(args?.includeComponents);
+                }
+                if (action === 'inspect') {
+                    return await sceneTools.inspectScene(args);
+                }
+                if (action === 'stats') {
+                    return await sceneTools.handleQuerySystem({ action: 'get_stats' });
+                }
+                if (action === 'execute_script' || action === 'execute_component_method') {
+                    return await sceneTools.handleExecutionControl(args);
+                }
+                return await sceneTools.handleSceneManagement(args);
+            }
+
+            case 'node_manage': {
+                const nodeTools = this.tools['node'];
+                if (!nodeTools) throw new Error('Node tools not initialized');
+
+                const targetUuid = args?.nodeUuid || args?.uuid;
+
+                if (action === 'query') {
+                    const queryType = args?.queryType || 'find_by_name';
+                    return await nodeTools.handleNodeQuery({
+                        action: queryType,
+                        name: args?.name,
+                        pattern: args?.name || args?.path,
+                        uuid: targetUuid,
+                        maxDepth: args?.maxDepth
+                    });
+                }
+                if (action === 'create' || action === 'delete' || action === 'duplicate') {
+                    return await nodeTools.handleNodeLifecycle({
+                        action,
+                        name: args?.name,
+                        parent: args?.parentUuid,
+                        uuid: targetUuid,
+                        is2D: args?.is2D
+                    });
+                }
+                if (action === 'transform') {
+                    return await nodeTools.handleNodeTransform({
+                        uuid: targetUuid,
+                        position: args?.position,
+                        rotation: args?.rotation,
+                        scale: args?.scale,
+                        size: args?.size,
+                        anchor: args?.anchor
+                    });
+                }
+                if (action === 'reparent') {
+                    return await nodeTools.handleNodeHierarchy({
+                        action: 'move',
+                        nodeUuid: targetUuid,
+                        newParentUuid: args?.newParentUuid || args?.parentUuid
+                    });
+                }
+                if (action === 'set_active') {
+                    return await nodeTools.handleNodePropertyManagement({
+                        action: 'set_active',
+                        nodeUuid: targetUuid,
+                        active: args?.active
+                    });
+                }
+                if (action === 'clipboard') {
+                    return await nodeTools.handleNodeClipboard({
+                        action: args?.clipboardAction || 'copy',
+                        nodeUuid: targetUuid
+                    });
+                }
+                return await nodeTools.handleNodeTransform({ uuid: targetUuid, ...args });
+            }
+
+            case 'component_manage': {
+                const compTools = this.tools['component'];
+                if (!compTools) throw new Error('Component tools not initialized');
+
+                if (action === 'add' || action === 'remove') {
+                    return await compTools.handleComponentManage({
+                        action,
+                        nodeUuid: args?.nodeUuid,
+                        componentType: args?.componentType,
+                        componentIndex: args?.componentIndex
+                    });
+                }
+                if (action === 'get' || action === 'list_types') {
+                    return await compTools.handleComponentQuery({
+                        action: action === 'list_types' ? 'get_available_components' : 'get_components',
+                        nodeUuid: args?.nodeUuid,
+                        componentType: args?.componentType,
+                        category: args?.category
+                    });
+                }
+                if (action === 'set_property') {
+                    return await compTools.setComponentProperties(args);
+                }
+                if (action === 'update') {
+                    return await compTools.updateComponent(args);
+                }
+                if (action === 'bind_event') {
+                    return await compTools.configureClickEvent(args);
+                }
+                if (action === 'query_class_info') {
+                    return await compTools.queryClassInfo(args);
+                }
+                return await compTools.updateComponent(args);
+            }
+
+            case 'prefab_manage': {
+                const prefabTools = this.tools['prefab'];
+                if (!prefabTools) throw new Error('Prefab tools not initialized');
+
+                if (action === 'list' || action === 'info' || action === 'validate') {
+                    return await prefabTools.handlePrefabBrowse(args);
+                }
+                if (action === 'create' || action === 'delete') {
+                    return await prefabTools.handlePrefabLifecycle(args);
+                }
+                if (action === 'instantiate' || action === 'unlink' || action === 'apply' || action === 'revert') {
+                    return await prefabTools.handlePrefabInstance(args);
+                }
+                if (action === 'enter' || action === 'exit' || action === 'save' || action === 'atomic_edit') {
+                    return await prefabTools.handlePrefabEdit(args);
+                }
+                return await prefabTools.handlePrefabBrowse(args);
+            }
+
+            case 'ui_builder': {
+                const uiTools = this.tools['uiBuilder'];
+                if (!uiTools) throw new Error('UIBuilder tools not initialized');
+                return await uiTools.execute('ui_builder', args);
+            }
+
+            case 'anim_manage': {
+                const animTools = this.tools['animgraph'];
+                if (!animTools) throw new Error('Animation tools not initialized');
+
+                const mappedAction = action?.startsWith('graph_') ? action.replace('graph_', '') : action;
+                return await animTools.execute('manage', { ...args, action: mappedAction });
+            }
+
+            case 'asset_manage': {
+                const assetTools = this.tools['assetAdvanced'];
+                if (!assetTools) throw new Error('Asset tools not initialized');
+
+                if (action === 'resolve') {
+                    return await assetTools.handleAssetQuery({ action: 'resolve', assetPath: args?.assetPath || args?.url });
+                }
+                if (action === 'query') {
+                    return await assetTools.handleAssetQuery(args);
+                }
+                if (action === 'create') {
+                    return await assetTools.handleAssetOperations({ action: 'create', ...args });
+                }
+                if (action === 'delete' || action === 'import' || action === 'save_meta') {
+                    return await assetTools.handleAssetManage(args);
+                }
+                if (action === 'dependencies' || action === 'uuid_to_url' || action === 'url_to_uuid') {
+                    return await assetTools.handleAssetAnalyze(args);
+                }
+                return await assetTools.handleAssetQuery(args);
+            }
+
+            case 'knowledge_query': {
+                const knowTools = this.tools['knowledge'];
+                if (!knowTools) throw new Error('Knowledge tools not initialized');
+                return await knowTools.execute('knowledge_query', args);
+            }
+
+            case 'validation_manage': {
+                const valTools = this.tools['validation'];
+                if (!valTools) throw new Error('Validation tools not initialized');
+
+                if (action === 'check_scene') return await valTools.checkScene(args);
+                if (action === 'check_assets') return await valTools.checkAssets(args);
+                if (action === 'check_viewport') return await valTools.checkViewport(args);
+                if (action === 'validate_json') return await valTools.validateJsonParams(args?.jsonString);
+                return await valTools.checkScene(args);
+            }
+
+            case 'batch_execute': {
+                const batchTools = this.tools['batch'];
+                if (!batchTools) throw new Error('Batch tools not initialized');
+                return await batchTools.execute('batch_execute', args);
+            }
+
+            case 'project_manage': {
+                const projTools = this.tools['project'];
+                const debugTools = this.tools['debug'];
+
+                if (action === 'compile_watch') {
+                    if (debugTools) return await debugTools.execute('compile_status', args);
+                }
+                if (action === 'open_build_panel') {
+                    return await projTools.handleBuildSystem({ action: 'open_build_panel' });
+                }
+                return await projTools.handleProjectManage(args);
+            }
+
+            case 'scene_view_control': {
+                const sceneView = this.tools['sceneView'];
+                const refImg = this.tools['referenceImage'];
+
+                if (action === 'reference_image') {
+                    if (refImg) return await refImg.handleReferenceImageControl(args);
+                }
+                if (action === 'grid_toggle') {
+                    return await sceneView.handleGridControl(args);
+                }
+                if (action === 'gizmo_mode') {
+                    return await sceneView.handleGizmoControl(args);
+                }
+                return await sceneView.handleCameraControl(args);
+            }
+
+            case 'spine_manage': {
+                const compTools = this.tools['component'];
+                if (!compTools) throw new Error('Component tools not initialized');
+
+                if (action === 'setup_rig' || !action) {
+                    return await compTools.handleSpineSetup(args);
+                }
+                if (action === 'set_animation') {
+                    return await compTools.setComponentProperties({
+                        nodeUuid: args?.nodeUuid,
+                        componentType: 'sp.Skeleton',
+                        property: 'animation',
+                        value: args?.animationName
+                    });
+                }
+                if (action === 'set_skin') {
+                    return await compTools.setComponentProperties({
+                        nodeUuid: args?.nodeUuid,
+                        componentType: 'sp.Skeleton',
+                        property: 'defaultSkin',
+                        value: args?.skinName
+                    });
+                }
+                return await compTools.handleSpineSetup(args);
+            }
+
+            case 'debug_manage': {
+                const debugTools = this.tools['debug'];
+                if (!debugTools) throw new Error('Debug tools not initialized');
+
+                if (action === 'get_logs' || action === 'clear_logs') {
+                    return await debugTools.handleDebugConsole({ action: action === 'clear_logs' ? 'clear' : 'get_logs', ...args });
+                }
+                if (action === 'read_log_file') {
+                    return await debugTools.handleDebugLogs(args);
+                }
+                if (action === 'system_info') {
+                    return await debugTools.handleDebugSystem({ action: 'info' });
+                }
+                if (action === 'compile_status') {
+                    return await debugTools.getCompileStatus(args);
+                }
+                return await debugTools.handleDebugConsole(args);
+            }
+
+            case 'preferences_manage': {
+                const prefTools = this.tools['preferences'];
+                if (!prefTools) throw new Error('Preferences tools not initialized');
+                return await prefTools.handlePreferencesManage(args);
+            }
+
+            case 'broadcast_manage': {
+                const bcTools = this.tools['broadcast'];
+                if (!bcTools) throw new Error('Broadcast tools not initialized');
+                return await bcTools.execute(action || 'history', args);
+            }
+
+            default:
+                throw new Error(`Unknown intent tool: ${toolName}`);
+        }
+    }
+
+    private async dispatchLegacyTool(toolName: string, args: any): Promise<ToolResponse> {
+        // Direct tool aliases
+        if (toolName === 'batch_execute' || toolName === 'editor_batch_execute') {
+            return await this.dispatchIntent('batch_execute', args);
+        }
+        if (toolName === 'animgraph_manage') {
+            return await this.dispatchIntent('anim_manage', args);
+        }
+        if (toolName === 'spine_setup') {
+            return await this.dispatchIntent('spine_manage', { action: 'setup_rig', ...args });
+        }
+        if (toolName === 'compile_status' || toolName === 'editor_compile_status') {
+            return await this.dispatchIntent('project_manage', { action: 'compile_watch', ...args });
+        }
+        if (toolName === 'inspect_scene' || toolName === 'scene_inspect_scene') {
+            return await this.dispatchIntent('scene_manage', { action: 'inspect', ...args });
+        }
+
+        // Category-based legacy tools
+        const parts = toolName.split('_');
+        const category = parts[0];
+        const method = parts.slice(1).join('_');
+
+        // Check if category exists in underlying tool registry
+        if (this.tools[category]) {
+            return await this.tools[category].execute(method, args);
+        }
+
+        // Direct matching without prefix
+        for (const [catName, toolSet] of Object.entries(this.tools)) {
+            if (typeof toolSet?.execute === 'function') {
+                try {
+                    const res = await toolSet.execute(toolName, args);
+                    if (res) return res;
+                } catch {}
+            }
+        }
+
+        throw new Error(`Tool "${toolName}" not found in Unified Intent or Legacy registries`);
+    }
+}

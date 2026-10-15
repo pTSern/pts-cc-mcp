@@ -107,7 +107,7 @@ export class ToolManager {
                 './project-tools', './debug-tools', './preferences-tools', './server-tools',
                 './broadcast-tools', './scene-view-tools', './reference-image-tools',
                 './asset-advanced-tools', './validation-tools', './game-tools',
-                './animgraph-tools', './batch-tools'
+                './animgraph-tools', './batch-tools', './knowledge-tools', './ui-builder-tools'
             ];
             for (const mod of toolModNames) {
                 try {
@@ -132,6 +132,8 @@ export class ToolManager {
             const { GameTools } = require('./game-tools');
             const { AnimgraphTools } = require('./animgraph-tools');
             const { BatchTools } = require('./batch-tools');
+            const { KnowledgeTools } = require('./knowledge-tools');
+            const { UIBuilderTools } = require('./ui-builder-tools');
 
             // Initialize tool instances
             const tools = {
@@ -150,7 +152,9 @@ export class ToolManager {
                 validation: new ValidationTools(),
                 game: new GameTools(),
                 animgraph: new AnimgraphTools(),
-                batch: new BatchTools()
+                batch: new BatchTools(),
+                knowledge: new KnowledgeTools(),
+                uiBuilder: new UIBuilderTools()
             };
 
             // Get tool definitions from each tool class

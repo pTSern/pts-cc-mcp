@@ -66,8 +66,165 @@ export class ValidationTools implements ToolExecutor {
                 return await this.createSafeStringValue(args.value);
             case 'format_mcp_request':
                 return await this.formatMcpRequest(args.toolName, args.arguments);
+            case 'check_scene':
+                return await this.checkScene(args);
+            case 'check_assets':
+                return await this.checkAssets(args);
+            case 'check_viewport':
+                return await this.checkViewport(args);
             default:
-                return { success: false, error: `Unknown validation tool: ${toolName}. Available tools: validate_json_params, safe_string_value, format_mcp_request` };
+                return { success: false, error: `Unknown validation tool: ${toolName}. Available tools: check_scene, check_assets, check_viewport, validate_json_params, safe_string_value, format_mcp_request` };
+        }
+    }
+
+    public async checkScene(args?: any): Promise<ToolResponse> {
+        try {
+            if (typeof Editor === 'undefined' || !Editor.Message) {
+                return { success: false, error: 'Editor environment unavailable' };
+            }
+            const tree: any = await Editor.Message.request('scene', 'query-node-tree');
+            if (!tree) {
+                return { success: false, error: 'No active scene tree found' };
+            }
+
+            const issues: Array<{ type: 'error' | 'warning'; message: string; nodeName: string; nodeUuid: string }> = [];
+            const seenSiblingNames = new Map<string, Set<string>>();
+
+            const walk = (node: any, parentUuid: string) => {
+                if (!seenSiblingNames.has(parentUuid)) {
+                    seenSiblingNames.set(parentUuid, new Set());
+                }
+                const siblings = seenSiblingNames.get(parentUuid)!;
+                if (siblings.has(node.name)) {
+                    issues.push({
+                        type: 'warning',
+                        message: `Duplicate sibling node name: "${node.name}"`,
+                        nodeName: node.name,
+                        nodeUuid: node.uuid
+                    });
+                } else {
+                    siblings.add(node.name);
+                }
+
+                if (Array.isArray(node.components)) {
+                    let hasUITransform = false;
+                    let hasUIRenderer = false;
+
+                    for (const comp of node.components) {
+                        const compType = comp.type || comp.name || '';
+                        if (compType.includes('UITransform')) {
+                            hasUITransform = true;
+                        }
+                        if (compType.includes('Sprite') || compType.includes('Label') || compType.includes('Button') || compType.includes('RichText')) {
+                            hasUIRenderer = true;
+                        }
+                    }
+
+                    if (hasUIRenderer && !hasUITransform) {
+                        issues.push({
+                            type: 'error',
+                            message: `Node has 2D UI render component but missing cc.UITransform`,
+                            nodeName: node.name,
+                            nodeUuid: node.uuid
+                        });
+                    }
+                }
+
+                if (Array.isArray(node.children)) {
+                    for (const child of node.children) {
+                        walk(child, node.uuid);
+                    }
+                }
+            };
+
+            walk(tree, 'root');
+
+            return {
+                success: true,
+                message: issues.length === 0 ? 'Scene validation passed with 0 issues' : `Found ${issues.length} issue(s)`,
+                data: {
+                    totalIssues: issues.length,
+                    errorCount: issues.filter(i => i.type === 'error').length,
+                    warningCount: issues.filter(i => i.type === 'warning').length,
+                    issues
+                }
+            };
+        } catch (err: any) {
+            return { success: false, error: `Scene validation failed: ${err.message}` };
+        }
+    }
+
+    public async checkAssets(args?: any): Promise<ToolResponse> {
+        try {
+            if (typeof Editor === 'undefined' || !Editor.Message) {
+                return { success: false, error: 'Editor environment unavailable' };
+            }
+            const assets: any[] = await Editor.Message.request('asset-db', 'query-assets', {});
+            const issues: any[] = [];
+
+            if (Array.isArray(assets)) {
+                for (const asset of assets) {
+                    if (!asset.uuid) {
+                        issues.push({ type: 'error', message: 'Asset missing UUID', asset: asset.url });
+                    }
+                    if (asset.invalid) {
+                        issues.push({ type: 'error', message: 'Corrupt or invalid asset', asset: asset.url, uuid: asset.uuid });
+                    }
+                }
+            }
+
+            return {
+                success: true,
+                data: {
+                    scannedAssets: assets ? assets.length : 0,
+                    issuesCount: issues.length,
+                    issues
+                }
+            };
+        } catch (err: any) {
+            return { success: false, error: `Asset validation failed: ${err.message}` };
+        }
+    }
+
+    public async checkViewport(args?: any): Promise<ToolResponse> {
+        try {
+            if (typeof Editor === 'undefined' || !Editor.Message) {
+                return { success: false, error: 'Editor environment unavailable' };
+            }
+            const tree: any = await Editor.Message.request('scene', 'query-node-tree');
+            if (!tree) return { success: false, error: 'No active scene' };
+
+            const outOfBounds: any[] = [];
+            const threshold = args?.threshold || 3000;
+
+            const scanPos = (node: any) => {
+                const pos = node.position;
+                if (pos) {
+                    if (Math.abs(pos.x) > threshold || Math.abs(pos.y) > threshold) {
+                        outOfBounds.push({
+                            name: node.name,
+                            uuid: node.uuid,
+                            position: pos,
+                            warning: `Position exceeds threshold (+/- ${threshold}px)`
+                        });
+                    }
+                }
+                if (Array.isArray(node.children)) {
+                    for (const c of node.children) scanPos(c);
+                }
+            };
+
+            scanPos(tree);
+            return {
+                success: true,
+                data: {
+                    threshold,
+                    outOfBoundsCount: outOfBounds.length,
+                    nodes: outOfBounds
+                }
+            };
+        } catch (err: any) {
+            return { success: false, error: `Viewport check failed: ${err.message}` };
         }
     }
 
