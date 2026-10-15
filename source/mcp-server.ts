@@ -86,6 +86,7 @@ export class MCPServer {
                 nexus: './tools/nexus-tools',
                 game: './tools/game-tools',
                 animgraph: './tools/animgraph-tools',
+                animation: './tools/animation-tools',
                 batch: './tools/batch-tools',
                 knowledge: './tools/knowledge-tools',
                 uiBuilder: './tools/ui-builder-tools'

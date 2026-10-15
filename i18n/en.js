@@ -133,6 +133,7 @@ module.exports = {
     "cat_game": "Gameplay & Runtime Driver",
     "cat_nexus": "Nexus Event Queries",
     "cat_animgraph": "Animation Graphs",
+    "cat_animation": "Timeline Keyframe Editor",
     "cat_batch": "Batch Transactions",
     "cat_knowledge": "Knowledge & API Catalog",
     "cat_uiBuilder": "Declarative UI Builder",

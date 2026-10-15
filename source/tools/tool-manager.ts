@@ -134,6 +134,7 @@ export class ToolManager {
             const { BatchTools } = require('./batch-tools');
             const { KnowledgeTools } = require('./knowledge-tools');
             const { UIBuilderTools } = require('./ui-builder-tools');
+            const { AnimationTools } = require('./animation-tools');
 
             // Initialize tool instances
             const tools = {
@@ -152,6 +153,7 @@ export class ToolManager {
                 validation: new ValidationTools(),
                 game: new GameTools(),
                 animgraph: new AnimgraphTools(),
+                animation: new AnimationTools(),
                 batch: new BatchTools(),
                 knowledge: new KnowledgeTools(),
                 uiBuilder: new UIBuilderTools()

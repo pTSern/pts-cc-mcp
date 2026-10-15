@@ -187,22 +187,46 @@ export class IntentDispatcher {
             // 6. Animation System
             {
                 name: 'anim_manage',
-                description: 'ANIMATION SYSTEM: Inspect and edit .animgraph state machines, states, transitions, parameters, StateMachineComponents, and bulk migrate component types.',
+                description: 'ANIMATION SYSTEM: Inspect and edit .animgraph state machines, author .anim AnimationClips, manipulate property tracks (position/rotation/scale/color), add keyframes, animation events, apply motion presets, and slice FBX animation takes.',
                 inputSchema: {
                     type: 'object',
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['graph_inspect', 'graph_add_component', 'graph_update_component', 'graph_remove_component', 'graph_batch_replace', 'clip_create', 'clip_edit_keyframe'],
+                            enum: [
+                                'graph_inspect', 'graph_add_component', 'graph_update_component', 'graph_remove_component', 'graph_batch_replace',
+                                'clip_inspect', 'clip_create', 'clip_add_track', 'clip_remove_track', 'clip_add_keyframe', 'clip_remove_keyframe',
+                                'clip_add_event', 'clip_remove_event', 'clip_apply_preset', 'slice_fbx'
+                            ],
                             description: 'Animation action opcode'
                         },
+                        // Animgraph properties
                         animgraphPath: { type: 'string', description: 'Path to .animgraph asset' },
                         stateName: { type: 'string', description: 'Target state name in animgraph' },
                         componentType: { type: 'string', description: 'Component type to attach or update' },
                         properties: { type: 'object', description: 'Properties object' },
                         componentIndex: { type: 'number', description: 'Index of component' },
                         fromType: { type: 'string', description: 'Source component class name for batch migration' },
-                        toType: { type: 'string', description: 'Target component class name for batch migration' }
+                        toType: { type: 'string', description: 'Target component class name for batch migration' },
+                        // Clip & Timeline properties
+                        animPath: { type: 'string', description: 'Path to .anim AnimationClip asset' },
+                        name: { type: 'string', description: 'Animation clip or preset name' },
+                        duration: { type: 'number', description: 'Duration in seconds' },
+                        sample: { type: 'number', default: 60, description: 'Sample rate' },
+                        speed: { type: 'number', default: 1, description: 'Playback speed' },
+                        wrapMode: { type: 'number', description: 'Wrap mode (0: Normal, 1: Loop, 2: PingPong)' },
+                        property: { type: 'string', enum: ['position', 'scale', 'eulerAngles', 'color', 'opacity'], description: 'Property track to edit' },
+                        nodePath: { type: 'string', description: 'Target hierarchy child node path' },
+                        time: { type: 'number', description: 'Keyframe timestamp in seconds' },
+                        value: { description: 'Keyframe value (scalar or array)' },
+                        interpolationMode: { type: 'string', enum: ['LINEAR', 'CONSTANT', 'CUBIC'] },
+                        frame: { type: 'number', description: 'Event timestamp in seconds' },
+                        func: { type: 'string', description: 'Event trigger function' },
+                        params: { type: 'array', description: 'Event parameters' },
+                        presetName: { type: 'string', enum: ['fade_in', 'fade_out', 'bounce_pop', 'shake', 'button_press', 'pulse', 'spin'] },
+                        // FBX Slicing properties
+                        fbxMetaPath: { type: 'string', description: 'Path to .fbx or .fbx.meta asset' },
+                        animations: { type: 'array', description: 'Array of FBX take slices: [{ name, from, to, wrapMode, speed }]' }
                     },
                     required: ['action']
                 }
@@ -596,11 +620,22 @@ export class IntentDispatcher {
             }
 
             case 'anim_manage': {
+                if (action?.startsWith('graph_')) {
+                    const animgraphTools = this.tools['animgraph'];
+                    if (!animgraphTools) throw new Error('Animgraph tools not initialized');
+                    const mappedAction = action.replace('graph_', '');
+                    return await animgraphTools.execute('manage', { ...args, action: mappedAction });
+                }
+
+                // Clip timeline or FBX slicing operations
+                const animationTools = this.tools['animation'];
+                if (animationTools) {
+                    return await animationTools.execute('animation_editor', args);
+                }
+
                 const animTools = this.tools['animgraph'];
                 if (!animTools) throw new Error('Animation tools not initialized');
-
-                const mappedAction = action?.startsWith('graph_') ? action.replace('graph_', '') : action;
-                return await animTools.execute('manage', { ...args, action: mappedAction });
+                return await animTools.execute('manage', args);
             }
 
             case 'asset_manage': {
@@ -621,6 +656,9 @@ export class IntentDispatcher {
                 }
                 if (action === 'dependencies' || action === 'uuid_to_url' || action === 'url_to_uuid') {
                     return await assetTools.handleAssetAnalyze(args);
+                }
+                if (action === 'refresh' || action === 'check_ready') {
+                    return await assetTools.handleAssetSystem(args);
                 }
                 return await assetTools.handleAssetQuery(args);
             }
@@ -745,6 +783,9 @@ export class IntentDispatcher {
             return await this.dispatchIntent('batch_execute', args);
         }
         if (toolName === 'animgraph_manage') {
+            return await this.dispatchIntent('anim_manage', args);
+        }
+        if (toolName === 'animation_editor') {
             return await this.dispatchIntent('anim_manage', args);
         }
         if (toolName === 'spine_setup') {

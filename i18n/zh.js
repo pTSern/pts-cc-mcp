@@ -133,6 +133,7 @@ module.exports = {
     "cat_game": "游戏运行与输入驱动",
     "cat_nexus": "Nexus 事件查询",
     "cat_animgraph": "动画图状态机",
+    "cat_animation": "时间轴关键帧编辑器",
     "cat_batch": "批处理原子事务",
     "cat_knowledge": "引擎知识库与API目录",
     "cat_uiBuilder": "声明式UI构建器",
