@@ -846,7 +846,7 @@ export class IntentDispatcher {
                     return await debugTools.handleDebugLogs(args);
                 }
                 if (action === 'system_info') {
-                    return await debugTools.handleDebugSystem({ action: 'info' });
+                    return await debugTools.handleDebugSystem({ action: 'editor_info' });
                 }
                 if (action === 'compile_status') {
                     return await debugTools.getCompileStatus(args);
@@ -863,7 +863,19 @@ export class IntentDispatcher {
             case 'broadcast_manage': {
                 const bcTools = this.tools['broadcast'];
                 if (!bcTools) throw new Error('Broadcast tools not initialized');
-                return await bcTools.execute(action || 'history', args);
+                if (action === 'history' || action === 'get_log') {
+                    return await bcTools.execute('broadcast_log_management', { action: 'get_log', limit: args?.limit });
+                }
+                if (action === 'clear' || action === 'clear_log') {
+                    return await bcTools.execute('broadcast_log_management', { action: 'clear_log' });
+                }
+                if (action === 'subscribe' || action === 'start_listening') {
+                    return await bcTools.execute('broadcast_listener_management', { action: 'start_listening', messageType: args?.channel });
+                }
+                if (action === 'listeners' || action === 'get_active_listeners') {
+                    return await bcTools.execute('broadcast_listener_management', { action: 'get_active_listeners' });
+                }
+                return await bcTools.execute('broadcast_log_management', { action: 'get_log' });
             }
 
             case 'nexus_manage':
