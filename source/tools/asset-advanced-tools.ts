@@ -300,13 +300,31 @@ export class AssetAdvancedTools implements ToolExecutor {
         
         switch (action) {
             case 'import':
+                if (!Array.isArray(args?.assets) || args.assets.length === 0) {
+                    return {
+                        success: false,
+                        error: 'Import action requires "assets" array parameter: [{ sourcePath, targetUrl }]'
+                    };
+                }
                 return await this.batchImportAssets(args.assets, args.overwrite);
             case 'delete':
+                if (!Array.isArray(args?.urls) || args.urls.length === 0) {
+                    return {
+                        success: false,
+                        error: 'Delete action requires "urls" array parameter: ["db://assets/..."]'
+                    };
+                }
                 return await this.batchDeleteAssets(args.urls);
             case 'save_meta':
+                if (!args?.urlOrUUID) {
+                    return {
+                        success: false,
+                        error: 'save_meta action requires "urlOrUUID" parameter'
+                    };
+                }
                 return await this.saveAssetMeta(args.urlOrUUID, args.content);
             case 'generate_url':
-                return await this.generateAvailableUrl(args.url);
+                return await this.generateAvailableUrl(args?.url || 'db://assets/new_asset');
             default:
                 return { success: false, error: `Unknown asset manage action: ${action}` };
         }
@@ -471,7 +489,13 @@ export class AssetAdvancedTools implements ToolExecutor {
         }
     }
 
-    private async batchImportAssets(assets: Array<{ sourcePath: string; targetUrl: string }>, overwrite: boolean = false): Promise<ToolResponse> {
+    private async batchImportAssets(assets: Array<{ sourcePath: string; targetUrl: string }> = [], overwrite: boolean = false): Promise<ToolResponse> {
+        if (!Array.isArray(assets) || assets.length === 0) {
+            return {
+                success: false,
+                error: 'No assets provided for batch import'
+            };
+        }
         const results: any[] = [];
         let successCount = 0;
         let errorCount = 0;
@@ -513,7 +537,13 @@ export class AssetAdvancedTools implements ToolExecutor {
         };
     }
 
-    private async batchDeleteAssets(urls: string[]): Promise<ToolResponse> {
+    private async batchDeleteAssets(urls: string[] = []): Promise<ToolResponse> {
+        if (!Array.isArray(urls) || urls.length === 0) {
+            return {
+                success: false,
+                error: 'No URLs provided for batch delete'
+            };
+        }
         const results: any[] = [];
         let successCount = 0;
         let errorCount = 0;

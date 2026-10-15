@@ -782,10 +782,7 @@ export class IntentDispatcher {
         if (toolName === 'batch_execute' || toolName === 'editor_batch_execute') {
             return await this.dispatchIntent('batch_execute', args);
         }
-        if (toolName === 'animgraph_manage') {
-            return await this.dispatchIntent('anim_manage', args);
-        }
-        if (toolName === 'animation_editor') {
+        if (toolName === 'animgraph_manage' || toolName === 'animation_editor') {
             return await this.dispatchIntent('anim_manage', args);
         }
         if (toolName === 'spine_setup') {
@@ -798,26 +795,72 @@ export class IntentDispatcher {
             return await this.dispatchIntent('scene_manage', { action: 'inspect', ...args });
         }
 
-        // Category-based legacy tools
+        // Map category prefix to internal tool registry key
         const parts = toolName.split('_');
-        const category = parts[0];
+        const prefix = parts[0];
         const method = parts.slice(1).join('_');
 
-        // Check if category exists in underlying tool registry
-        if (this.tools[category]) {
-            return await this.tools[category].execute(method, args);
+        const categoryMap: Record<string, string> = {
+            scene: 'scene',
+            node: 'node',
+            component: 'component',
+            prefab: 'prefab',
+            project: 'project',
+            debug: 'debug',
+            preferences: 'preferences',
+            server: 'server',
+            broadcast: 'broadcast',
+            sceneView: 'sceneView',
+            scene_view: 'sceneView',
+            referenceImage: 'referenceImage',
+            reference_image: 'referenceImage',
+            asset: 'assetAdvanced',
+            assetAdvanced: 'assetAdvanced',
+            validation: 'validation',
+            game: 'game',
+            animgraph: 'animgraph',
+            animation: 'animation',
+            batch: 'batch',
+            knowledge: 'knowledge',
+            ui: 'uiBuilder',
+            uiBuilder: 'uiBuilder'
+        };
+
+        const targetCat = categoryMap[prefix] || prefix;
+        const targetToolSet = this.tools[targetCat];
+
+        if (targetToolSet && typeof targetToolSet.execute === 'function') {
+            // First try calling with original toolName (e.g. 'scene_management')
+            try {
+                return await targetToolSet.execute(toolName, args);
+            } catch (err: any) {
+                // If it threw unknown tool, try method name (e.g. 'management')
+                if (err && err.message && err.message.includes('Unknown tool')) {
+                    try {
+                        return await targetToolSet.execute(method, args);
+                    } catch {}
+                } else {
+                    throw err;
+                }
+            }
         }
 
-        // Direct matching without prefix
+        // Search all registered tool sets
         for (const [catName, toolSet] of Object.entries(this.tools)) {
             if (typeof toolSet?.execute === 'function') {
                 try {
-                    const res = await toolSet.execute(toolName, args);
-                    if (res) return res;
-                } catch {}
+                    return await toolSet.execute(toolName, args);
+                } catch (err: any) {
+                    if (err && err.message && err.message.includes('Unknown tool')) {
+                        try {
+                            return await toolSet.execute(method, args);
+                        } catch {}
+                    }
+                }
             }
         }
 
         throw new Error(`Tool "${toolName}" not found in Unified Intent or Legacy registries`);
     }
 }
+

@@ -1,9 +1,12 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { MCPServer } from './mcp-server';
 import { readSettings, saveSettings } from './settings';
 import { MCPServerSettings } from './types';
 import { ToolManager } from './tools/tool-manager';
 import { EXTENSION_NAME } from './constants';
 import { t } from './utils/i18n';
+import { generateAgentsDocContent } from './utils/agents-doc-generator';
 
 let mcpServer: MCPServer | null = null;
 let toolManager: ToolManager;
@@ -210,12 +213,47 @@ export const methods: { [key: string]: (...any: any) => any } = {
     }
 };
 
+async function checkAgentsDocBootstrap(): Promise<void> {
+    try {
+        if (typeof Editor === 'undefined' || !Editor.Project || !Editor.Project.path) {
+            return;
+        }
+        const projectRoot = Editor.Project.path;
+        const agentsFilePath = path.join(projectRoot, 'AGENTS.md');
+        if (!fs.existsSync(agentsFilePath)) {
+            console.log('[pTS MCP] No AGENTS.md detected in project root, prompting user...');
+            if (Editor.Dialog && typeof Editor.Dialog.info === 'function') {
+                const res = await Editor.Dialog.info(
+                    'No AGENTS.md detected in project root.\n\nWould you like to generate AGENTS.md now? This file provides complete MCP tool specifications and operational rules so AI agents (Cursor, Claude, Gemini, Antigravity) automatically recognize and interact with this Cocos Creator project.',
+                    {
+                        title: 'pTS Cocos MCP Server - AI Agent Setup',
+                        buttons: ['Create AGENTS.md', 'Cancel'],
+                        default: 0,
+                        cancel: 1
+                    }
+                );
+                if (res && res.response === 0) {
+                    fs.writeFileSync(agentsFilePath, generateAgentsDocContent(), 'utf8');
+                    console.log('[pTS MCP] ✅ Generated AGENTS.md at project root:', agentsFilePath);
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('[pTS MCP] AGENTS.md bootstrap check skipped:', e);
+    }
+}
+
 /**
  * @en Method Triggered on Extension Startup
  */
 export function load() {
     console.log('Cocos MCP Server extension loaded');
     
+    // Check and prompt for AGENTS.md in project root
+    checkAgentsDocBootstrap().catch(err => {
+        console.warn('[pTS MCP] Bootstrap check failed:', err);
+    });
+
     // Initialize tool manager
     toolManager = new ToolManager();
     

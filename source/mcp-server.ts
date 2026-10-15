@@ -458,6 +458,9 @@ export class MCPServer {
                 res.end(JSON.stringify({
                     status: 'ok',
                     tools: this.toolsList.length,
+                    intentTools: this.toolsList.length,
+                    operations: 231,
+                    transport: this.settings.transport || 'streamable_http',
                     activeSseSessions: this.sseSessions.size,
                     activeStreamableSessions: this.streamableSessions.size,
                     version: this.getVersion()

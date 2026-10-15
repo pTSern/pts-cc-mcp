@@ -3,11 +3,12 @@ import * as path from 'path';
 import { MCPServerSettings } from './types';
 
 const DEFAULT_SETTINGS: MCPServerSettings = {
-    port: 3000,
+    port: 3121,
     autoStart: false,
     enableDebugLog: false,
     allowedOrigins: ['*'],
-    maxConnections: 10
+    maxConnections: 10,
+    transport: 'streamable_http'
 };
 
 function getSettingsPath(): string {

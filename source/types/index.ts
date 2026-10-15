@@ -4,6 +4,7 @@ export interface MCPServerSettings {
     enableDebugLog: boolean;
     allowedOrigins: string[];
     maxConnections: number;
+    transport?: 'streamable_http' | 'sse' | 'stdio';
 }
 
 export interface ServerStatus {

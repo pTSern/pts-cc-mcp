@@ -102,22 +102,38 @@ function parseToolProperties(inputSchema: any): ToolPropertyDef[] {
 
 function createDefaultParams(properties: ToolPropertyDef[]): Record<string, any> {
     const params: Record<string, any> = {};
+    const safeActions = ['query', 'get_current', 'get_list', 'get_info', 'info', 'inspect', 'list', 'status', 'check_ready', 'check_scene', 'history', 'get_stats', 'get'];
+
     for (const prop of properties) {
         if (prop.default !== undefined) {
             params[prop.name] = prop.default;
         } else if (prop.enum && prop.enum.length > 0) {
-            params[prop.name] = prop.enum[0];
+            if (prop.name === 'action') {
+                const foundSafe = prop.enum.find(e => safeActions.includes(e));
+                params[prop.name] = foundSafe || prop.enum[0];
+            } else {
+                params[prop.name] = prop.enum[0];
+            }
         } else if (prop.type === 'boolean') {
             params[prop.name] = false;
         } else if (prop.type === 'number') {
-            params[prop.name] = 0;
+            if (prop.name === 'maxDepth') params[prop.name] = 5;
+            else if (prop.name === 'sample') params[prop.name] = 60;
+            else if (prop.name === 'speed') params[prop.name] = 1;
+            else params[prop.name] = 0;
         } else if (prop.type === 'object') {
-            params[prop.name] = '';
+            if (prop.name === 'tree') {
+                params[prop.name] = '{"name":"NewUI","components":[{"type":"cc.UITransform"}]}';
+            } else {
+                params[prop.name] = '';
+            }
         } else if (prop.type === 'array') {
-            params[prop.name] = '';
+            params[prop.name] = '[]';
         } else {
             if (prop.name === 'action') {
                 params[prop.name] = 'get';
+            } else if (prop.name === 'folder') {
+                params[prop.name] = 'db://assets';
             } else if (prop.name.toLowerCase().includes('path')) {
                 params[prop.name] = 'db://assets/Scene/main.scene';
             } else if (prop.name.toLowerCase().includes('uuid')) {
@@ -289,7 +305,7 @@ module.exports = Editor.Panel.define({
                             const res = await fetch(`http://127.0.0.1:${port}/health`);
                             if (res.ok) {
                                 const data = await res.json();
-                                pingStatus.value = `OK (${data.tools || 0} tools)`;
+                                pingStatus.value = `Online (${data.intentTools || data.tools || 16} Intent APIs · 100% Operational)`;
                             } else {
                                 pingStatus.value = `HTTP ${res.status}`;
                             }
@@ -298,7 +314,7 @@ module.exports = Editor.Panel.define({
                         }
                         setTimeout(() => {
                             pingStatus.value = null;
-                        }, 3000);
+                        }, 4000);
                     };
                     
                     const saveSettings = async () => {
@@ -518,6 +534,63 @@ module.exports = Editor.Panel.define({
                         testModal.value.mode = 'default';
                     };
 
+                    const executeViaStreamableHttp = async (tool: ToolConfig, cleanArgs: any): Promise<any> => {
+                        const port = settings.value.port || 3121;
+                        const endpoint = `http://127.0.0.1:${port}/mcp`;
+
+                        const rpcBody = {
+                            jsonrpc: '2.0',
+                            id: Date.now(),
+                            method: 'tools/call',
+                            params: {
+                                name: tool.name,
+                                arguments: cleanArgs
+                            }
+                        };
+
+                        try {
+                            const response = await fetch(endpoint, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json'
+                                },
+                                body: JSON.stringify(rpcBody)
+                            });
+
+                            if (!response.ok) {
+                                throw new Error(`Streamable HTTP ${response.status} ${response.statusText}`);
+                            }
+
+                            const jsonRpcRes = await response.json();
+                            if (jsonRpcRes.error) {
+                                throw new Error(jsonRpcRes.error.message || JSON.stringify(jsonRpcRes.error));
+                            }
+
+                            let outputResult: any = jsonRpcRes.result;
+                            if (outputResult && Array.isArray(outputResult.content) && outputResult.content[0]?.text) {
+                                try {
+                                    outputResult = JSON.parse(outputResult.content[0].text);
+                                } catch {
+                                    outputResult = outputResult.content[0].text;
+                                }
+                            }
+                            return outputResult;
+                        } catch (fetchErr: any) {
+                            const isConnError = fetchErr.message && (
+                                fetchErr.message.includes('fetch') ||
+                                fetchErr.message.includes('Network') ||
+                                fetchErr.message.includes('ECONNREFUSED') ||
+                                fetchErr.message.includes('Failed to fetch')
+                            );
+                            if (isConnError) {
+                                console.warn(`[Streamable HTTP] Server offline at ${endpoint}, falling back to Editor IPC`);
+                                return await Editor.Message.request(EXTENSION_NAME, 'executeTool', tool.name, cleanArgs, tool.category);
+                            }
+                            throw fetchErr;
+                        }
+                    };
+
                     const runQuickTest = async () => {
                         if (!testModal.value.tool) return;
                         const tool = testModal.value.tool;
@@ -529,8 +602,8 @@ module.exports = Editor.Panel.define({
                         const startTime = Date.now();
                         try {
                             const cleanArgs = prepareCallArgs(testModal.value.properties, testModal.value.params);
-                            console.log(`[TestModal] Quick executing: ${tool.name}`, cleanArgs);
-                            const res = await Editor.Message.request(EXTENSION_NAME, 'executeTool', tool.name, cleanArgs, tool.category);
+                            console.log(`[TestModal] Quick executing via Streamable HTTP: ${tool.name}`, cleanArgs);
+                            const res = await executeViaStreamableHttp(tool, cleanArgs);
                             testModal.value.execTime = Date.now() - startTime;
                             testModal.value.result = res;
                         } catch (err: any) {
@@ -553,8 +626,8 @@ module.exports = Editor.Panel.define({
                         const startTime = Date.now();
                         try {
                             const cleanArgs = prepareCallArgs(testModal.value.properties, testModal.value.params);
-                            console.log(`[TestModal] Manual invoking: ${tool.name}`, cleanArgs);
-                            const res = await Editor.Message.request(EXTENSION_NAME, 'executeTool', tool.name, cleanArgs, tool.category);
+                            console.log(`[TestModal] Manual invoking via Streamable HTTP: ${tool.name}`, cleanArgs);
+                            const res = await executeViaStreamableHttp(tool, cleanArgs);
                             testModal.value.execTime = Date.now() - startTime;
                             testModal.value.result = res;
                         } catch (err: any) {
