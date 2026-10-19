@@ -2,8 +2,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { ToolConfig, ToolConfiguration, ToolManagerSettings, ToolDefinition } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
-import { t } from '../utils/i18n';
 import { isNexusAvailable } from '../utils/nexus-checker';
+import { isChromiumAvailable } from '../utils/chromium-checker';
+import { t } from '../utils/i18n';
 
 export class ToolManager {
     private settings: ToolManagerSettings;
@@ -25,6 +26,7 @@ export class ToolManager {
     private syncAvailableToolsToConfigurations(): void {
         let changed = false;
         const nexusActive = isNexusAvailable();
+        const chromiumActive = isChromiumAvailable();
         for (const config of this.settings.configurations) {
             const existingKeys = new Set(config.tools.map(t => `${t.category}_${t.name}`));
             for (const tool of this.availableTools) {
@@ -39,6 +41,12 @@ export class ToolManager {
             for (const tool of config.tools) {
                 if (tool.category === 'nexus' || tool.name.startsWith('nexus_')) {
                     if (!nexusActive && tool.enabled) {
+                        tool.enabled = false;
+                        changed = true;
+                    }
+                }
+                if (tool.category === 'browser' || tool.name.startsWith('browser_')) {
+                    if (!chromiumActive && tool.enabled) {
                         tool.enabled = false;
                         changed = true;
                     }
@@ -120,7 +128,7 @@ export class ToolManager {
                 './broadcast-tools', './scene-view-tools', './reference-image-tools',
                 './asset-advanced-tools', './validation-tools', './game-tools',
                 './animgraph-tools', './batch-tools', './knowledge-tools', './ui-builder-tools',
-                './nexus-tools'
+                './nexus-tools', './browser-tools'
             ];
             for (const mod of toolModNames) {
                 try {
@@ -149,6 +157,7 @@ export class ToolManager {
             const { UIBuilderTools } = require('./ui-builder-tools');
             const { AnimationTools } = require('./animation-tools');
             const { NexusTools } = require('./nexus-tools');
+            const { BrowserTools } = require('./browser-tools');
 
             // Initialize tool instances
             const tools = {
@@ -166,6 +175,7 @@ export class ToolManager {
                 assetAdvanced: new AssetAdvancedTools(),
                 validation: new ValidationTools(),
                 nexus: new NexusTools(),
+                browser: new BrowserTools(),
                 game: new GameTools(),
                 animgraph: new AnimgraphTools(),
                 animation: new AnimationTools(),
@@ -176,15 +186,21 @@ export class ToolManager {
 
             // Get tool definitions from each tool class
             const nexusActive = isNexusAvailable();
+            const chromiumActive = isChromiumAvailable();
             this.availableTools = [];
             for (const [category, toolSet] of Object.entries(tools)) {
                 const toolDefinitions = toolSet.getTools();
                 toolDefinitions.forEach((tool: any) => {
                     const isNexusTool = category === 'nexus' || tool.name.startsWith('nexus_');
+                    const isBrowserTool = category === 'browser' || tool.name.startsWith('browser_');
+                    let isEnabled = true;
+                    if (isNexusTool) isEnabled = nexusActive;
+                    else if (isBrowserTool) isEnabled = chromiumActive;
+
                     this.availableTools.push({
                         category: category,
                         name: tool.name,
-                        enabled: isNexusTool ? nexusActive : true,
+                        enabled: isEnabled,
                         description: tool.description,
                         inputSchema: tool.inputSchema
                     });
@@ -437,11 +453,16 @@ export class ToolManager {
 
     public getEnabledTools(): ToolConfig[] {
         const nexusActive = isNexusAvailable();
+        const chromiumActive = isChromiumAvailable();
         const currentConfig = this.getCurrentConfiguration();
         const tools = currentConfig ? currentConfig.tools : this.availableTools;
         return tools.filter(tool => {
             const isNexusTool = tool.category === 'nexus' || tool.name.startsWith('nexus_');
             if (isNexusTool && !nexusActive) {
+                return false;
+            }
+            const isBrowserTool = tool.category === 'browser' || tool.name.startsWith('browser_');
+            if (isBrowserTool && !chromiumActive) {
                 return false;
             }
             return tool.enabled;
@@ -450,15 +471,21 @@ export class ToolManager {
 
     public getToolManagerState() {
         const nexusActive = isNexusAvailable();
+        const chromiumActive = isChromiumAvailable();
         const currentConfig = this.getCurrentConfiguration();
         const rawTools = currentConfig ? currentConfig.tools : this.getAvailableTools();
         const schemaMap = new Map(this.availableTools.map(t => [`${t.category}_${t.name}`, t.inputSchema]));
 
         const enrichedTools = rawTools.map(tool => {
             const isNexusTool = tool.category === 'nexus' || tool.name.startsWith('nexus_');
+            const isBrowserTool = tool.category === 'browser' || tool.name.startsWith('browser_');
+            let isEnabled = tool.enabled;
+            if (isNexusTool) isEnabled = nexusActive && tool.enabled;
+            else if (isBrowserTool) isEnabled = chromiumActive && tool.enabled;
+
             return {
                 ...tool,
-                enabled: isNexusTool ? (nexusActive && tool.enabled) : tool.enabled,
+                enabled: isEnabled,
                 inputSchema: tool.inputSchema || schemaMap.get(`${tool.category}_${tool.name}`) || null
             };
         });

@@ -18,6 +18,7 @@ import {
 import { EXTENSION_NAME } from './constants';
 import { IntentDispatcher } from './tools/intent-dispatcher';
 import { isNexusAvailable } from './utils/nexus-checker';
+import { isChromiumAvailable } from './utils/chromium-checker';
 
 declare const Editor: any;
 
@@ -90,7 +91,8 @@ export class MCPServer {
                 animation: './tools/animation-tools',
                 batch: './tools/batch-tools',
                 knowledge: './tools/knowledge-tools',
-                uiBuilder: './tools/ui-builder-tools'
+                uiBuilder: './tools/ui-builder-tools',
+                browser: './tools/browser-tools'
             };
 
             for (const [key, modPath] of Object.entries(toolModules)) {
@@ -189,11 +191,17 @@ export class MCPServer {
             if (!nexusActive) {
                 this.toolsList = this.toolsList.filter(t => t.name !== 'nexus_manage');
             }
+            const chromiumActive = isChromiumAvailable();
+            if (!chromiumActive) {
+                this.toolsList = this.toolsList.filter(t => t.name !== 'browser_manage');
+            }
         } else {
             // Fallback to legacy categories if dispatcher is not ready
             const nexusActive = isNexusAvailable();
+            const chromiumActive = isChromiumAvailable();
             for (const [category, toolSet] of Object.entries(this.tools)) {
                 if (category === 'nexus' && !nexusActive) continue;
+                if (category === 'browser' && !chromiumActive) continue;
                 const tools = toolSet.getTools();
                 for (const tool of tools) {
                     this.toolsList.push({
@@ -228,8 +236,9 @@ export class MCPServer {
         // 1. tools/list: Gemini-safe sanitized schemas without $ref
         server.server.setRequestHandler(ListToolsRequestSchema, async () => {
             const nexusActive = isNexusAvailable();
+            const chromiumActive = isChromiumAvailable();
             const tools = this.toolsList
-                .filter(tool => nexusActive || tool.name !== 'nexus_manage')
+                .filter(tool => (nexusActive || tool.name !== 'nexus_manage') && (chromiumActive || tool.name !== 'browser_manage'))
                 .map(tool => ({
                     name: tool.name,
                     description: tool.description,

@@ -1,5 +1,6 @@
 import { ToolDefinition, ToolResponse } from '../types';
 import { isNexusAvailable } from '../utils/nexus-checker';
+import { isChromiumAvailable } from '../utils/chromium-checker';
 
 export class IntentDispatcher {
     private tools: Record<string, any>;
@@ -539,6 +540,105 @@ export class IntentDispatcher {
                     },
                     required: ['action']
                 }
+            },
+
+            // 18. Chromium Browser Game Testing Driver
+            {
+                name: 'browser_manage',
+                description: 'CHROMIUM GAME TESTING DRIVER (Playwright): Automate end-to-end browser gameplay testing on Cocos Creator web preview. Supports canvas taps, drag gestures, runtime JS evaluation, visual screenshot capture, and console monitoring.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: ['status', 'launch', 'navigate', 'tap', 'swipe', 'eval', 'screenshot', 'get_logs', 'close'],
+                            description: 'Browser testing action opcode: "status" = check Chromium/session state | "launch" = start Chromium preview browser | "navigate" = load preview URL | "tap" = click canvas | "swipe" = touch drag gesture | "eval" = execute JS in browser | "screenshot" = capture viewport | "get_logs" = fetch console telemetry | "close" = stop session'
+                        },
+                        headless: {
+                            type: 'boolean',
+                            default: false,
+                            description: 'Whether to run Chromium in headless mode (default: false for visual inspection)'
+                        },
+                        url: {
+                            type: 'string',
+                            default: 'http://127.0.0.1:7456',
+                            description: 'Target game preview URL (default: http://127.0.0.1:7456)'
+                        },
+                        viewportWidth: {
+                            type: 'number',
+                            default: 1280,
+                            description: 'Browser viewport width in pixels (default: 1280)'
+                        },
+                        viewportHeight: {
+                            type: 'number',
+                            default: 720,
+                            description: 'Browser viewport height in pixels (default: 720)'
+                        },
+                        mobile: {
+                            type: 'boolean',
+                            default: false,
+                            description: 'Emulate mobile device touch screen and viewport (default: false)'
+                        },
+                        waitForEngine: {
+                            type: 'boolean',
+                            default: true,
+                            description: 'Wait for Cocos Creator engine (window.cc) to initialize before returning (default: true)'
+                        },
+                        x: {
+                            type: 'number',
+                            description: 'Target X coordinate for tap (pixel coordinate e.g. 640 or normalized 0.0 - 1.0)'
+                        },
+                        y: {
+                            type: 'number',
+                            description: 'Target Y coordinate for tap (pixel coordinate e.g. 360 or normalized 0.0 - 1.0)'
+                        },
+                        startX: {
+                            type: 'number',
+                            description: 'Swipe start X coordinate (pixel or normalized 0.0 - 1.0)'
+                        },
+                        startY: {
+                            type: 'number',
+                            description: 'Swipe start Y coordinate (pixel or normalized 0.0 - 1.0)'
+                        },
+                        endX: {
+                            type: 'number',
+                            description: 'Swipe end X coordinate (pixel or normalized 0.0 - 1.0)'
+                        },
+                        endY: {
+                            type: 'number',
+                            description: 'Swipe end Y coordinate (pixel or normalized 0.0 - 1.0)'
+                        },
+                        duration: {
+                            type: 'number',
+                            default: 200,
+                            description: 'Swipe duration in milliseconds (default: 200)'
+                        },
+                        steps: {
+                            type: 'number',
+                            default: 8,
+                            description: 'Intermediate mouse move steps for swipe (default: 8)'
+                        },
+                        code: {
+                            type: 'string',
+                            description: 'JavaScript code expression to evaluate inside game runtime context (e.g. "cc.director.getScene()?.name")'
+                        },
+                        savePath: {
+                            type: 'string',
+                            description: 'Absolute file path to save captured PNG screenshot. Defaults to project temp folder.'
+                        },
+                        returnBase64: {
+                            type: 'boolean',
+                            default: false,
+                            description: 'Whether to include base64 encoded image string in response (default: false)'
+                        },
+                        clearLogs: {
+                            type: 'boolean',
+                            default: false,
+                            description: 'Clear stored console telemetry buffer after reading (default: false)'
+                        }
+                    },
+                    required: ['action']
+                }
             }
         ];
     }
@@ -549,7 +649,7 @@ export class IntentDispatcher {
             'ui_builder', 'anim_manage', 'asset_manage', 'knowledge_query',
             'validation_manage', 'batch_execute', 'project_manage', 'scene_view_control',
             'spine_manage', 'debug_manage', 'preferences_manage', 'broadcast_manage',
-            'nexus_manage', 'nexus_get_tree_graph'
+            'nexus_manage', 'nexus_get_tree_graph', 'browser_manage'
         ]);
         return intentNames.has(toolName);
     }
@@ -894,6 +994,19 @@ export class IntentDispatcher {
                 return await nexusTools.execute('nexus_manage', args);
             }
 
+            case 'browser_manage': {
+                if (!isChromiumAvailable()) {
+                    return {
+                        success: false,
+                        error: 'Playwright Chromium is not installed. Run "npx playwright install chromium" in your terminal to enable browser testing tools.',
+                        instruction: 'Please install Playwright Chromium via "npx playwright install chromium" to use automated game testing.'
+                    };
+                }
+                const browserTools = this.tools['browser'];
+                if (!browserTools) throw new Error('Browser tools not initialized');
+                return await browserTools.execute('browser_manage', args);
+            }
+
             default:
                 throw new Error(`Unknown intent tool: ${toolName}`);
         }
@@ -935,6 +1048,11 @@ export class IntentDispatcher {
             toolName === 'capture_snapshot' || toolName === 'diff_snapshot' || toolName === 'list_snapshots' ||
             toolName === 'restore_snapshot' || toolName === 'validate_json_params') {
             return await this.dispatchIntent('validation_manage', { action: toolName === 'validate_json_params' ? 'validate_json' : toolName, ...args });
+        }
+        if (toolName.startsWith('browser_') || toolName === 'browser_tap' || toolName === 'browser_swipe' || toolName === 'browser_eval' || toolName === 'browser_screenshot') {
+            const subAction = toolName.replace(/^browser_/, '');
+            const action = ['status', 'launch', 'navigate', 'tap', 'swipe', 'eval', 'screenshot', 'get_logs', 'close'].includes(subAction) ? subAction : args?.action || 'status';
+            return await this.dispatchIntent('browser_manage', { action, ...args });
         }
 
         // 1. Direct match from registered tool definitions map (O(1))
@@ -994,7 +1112,8 @@ export class IntentDispatcher {
             knowledge: 'knowledge',
             ui: 'uiBuilder',
             uiBuilder: 'uiBuilder',
-            nexus: 'nexus'
+            nexus: 'nexus',
+            browser: 'browser'
         };
 
         const targetCat = categoryMap[prefix] || prefix;

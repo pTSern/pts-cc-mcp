@@ -4,7 +4,7 @@
 
 export const MCP_DOC_NOTICE = `> [!IMPORTANT]
 > **AI Agent Self-Check Instruction (Mandatory)**:
-> Check if this \`AGENTS.md\` file contains the complete explanation of the \`pts-cc-mcp\` tools (all 17 Unified Intent APIs, parameters, and workflows).
+> Check if this \`AGENTS.md\` file contains the complete explanation of the \`pts-cc-mcp\` tools (all 18 Unified Intent APIs, parameters, and workflows).
 > - **If YES (Already Present)**: Proceed directly with your tasks using the MCP tools as documented below.
 > - **If NO (Missing or Incomplete)**: Call the MCP tool \`knowledge_query(action="get_mcp_guide")\` to fetch the complete MCP tools explanation, and write/append it to this \`AGENTS.md\` file immediately before proceeding!`;
 
@@ -47,6 +47,7 @@ Before performing any manual file editing on \`.scene\` or \`.prefab\` assets:
 | **\`preferences_manage\`** | \`action: "open_panel" \\| "get_config" \\| "set_config" \\| "reset_config"\`, \`category\`, \`path\`, \`value\` | Editor preferences and configuration management. |
 | **\`broadcast_manage\`** | \`action: "subscribe" \\| "emit" \\| "history" \\| "clear"\`, \`channel\`, \`data\` | Editor/Scene broadcast event bus for pub/sub telemetry. |
 | **\`nexus_manage\`** | \`action: "get_tree_graph" \\| "list_scenes" \\| "list_workflows" \\| "scan_network" \\| "query_event" \\| "generate_html"\`, \`type\`, \`target\`, \`format: "ascii" \\| "json" \\| "both"\` | Tree graph query engine for scene node hierarchies with workflows, function execution pipelines, and event dependency networks. |
+| **\`browser_manage\`** | \`action: "status" \\| "launch" \\| "navigate" \\| "tap" \\| "swipe" \\| "eval" \\| "screenshot" \\| "get_logs" \\| "close"\`, \`url\`, \`x\`, \`y\`, \`code\` | End-to-end automated browser game testing with Playwright Chromium: canvas taps, drags, JS eval, screenshots, and logs. |
 
 ---
 
@@ -97,6 +98,25 @@ Before performing any manual file editing on \`.scene\` or \`.prefab\` assets:
 * Compare scene against snapshot after edits: \`validation_manage(action="diff_snapshot")\`.
 * Audit scene hierarchy for layout bugs: \`validation_manage(action="check_scene")\`.
 * Scan project and scene for broken GUID references: \`validation_manage(action="check_assets")\`.
+
+#### H. Querying Scene Flow & Function Architecture Trees (Nexus)
+* Query complete scene node hierarchy with attached components & \`(Workflow)\` triggers:
+  \`nexus_manage(action="get_tree_graph", target="fast_test.scene", format="ascii")\` or \`scene_manage(action="tree_graph", scenePath="fast_test.scene")\`.
+* Query execution pipeline call graphs (GitNexus style):
+  \`nexus_manage(action="get_tree_graph", type="workflow", target="pipe_...")\`.
+* Query all indexed scenes or execution pipelines:
+  \`nexus_manage(action="list_scenes")\` / \`nexus_manage(action="list_workflows")\`.
+* Query JsonAsset & pTSAsset event networks:
+  \`nexus_manage(action="query_event", eventNameOrUuid="Event.UI.onOpenHomeScreen.json")\`.
+
+#### I. Automated Browser Gameplay Testing (Playwright Chromium)
+* Launch preview browser and wait for Cocos engine: \`browser_manage(action="launch", url="http://127.0.0.1:7456")\`.
+* Tap UI button or canvas position: \`browser_manage(action="tap", x=640, y=360)\`.
+* Perform swipe/drag gesture: \`browser_manage(action="swipe", startX=300, startY=400, endX=600, endY=400)\`.
+* Execute runtime JS query: \`browser_manage(action="eval", code="cc.director.getScene().name")\`.
+* Capture screenshot for visual inspection: \`browser_manage(action="screenshot")\`.
+* Check runtime logs & console errors: \`browser_manage(action="get_logs")\`.
+* Close browser session: \`browser_manage(action="close")\`.
 `;
 }
 
