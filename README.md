@@ -4,7 +4,7 @@
 
 A comprehensive, open-source Model Context Protocol (MCP) server plugin for Cocos Creator 3.8+ that empowers AI coding assistants (Claude CLI, Claude Desktop, Cursor, Windsurf, Antigravity) to inspect, author, validate, and manipulate Cocos Creator games through a standardized protocol.
 
-**🚀 Featuring dual Streamable HTTP & SSE transport, 16 unified intent tools (231 opcodes), declarative 1-shot UI generation, offline reflection knowledge base, timeline keyframe animation authoring, and scene/asset regression snapshot diffing!**
+**🚀 Featuring dual Streamable HTTP & SSE transport, 18 unified intent tools (231+ opcodes), automated browser testing with Chromium, smart node-based viewport interaction, physics & contact auditing, broken GUID auto-healing, and memory profiler telemetry!**
 
 ---
 
@@ -13,6 +13,22 @@ A comprehensive, open-source Model Context Protocol (MCP) server plugin for Coco
 This project originated as an open-source fork of [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) created by **LiDaxian**. We express our sincere gratitude and appreciation to **LiDaxian** and all community contributors for laying the foundational architecture and opening the path for AI-driven Cocos Creator development.
 
 `pts-cc-mcp` builds upon this foundation as a community-driven, 100% open-source extension, replacing all closed-source/commercial features with superior open-source equivalents.
+
+---
+
+## 🚀 Version 1.7.0 Changelog: Deep Diagnostics & Smart Automation
+
+### 1. Automated Physics & Contact Matrix Auditor
+- `validation_manage(action="check_physics")`: Recursive prefab/scene auditor scanning Box2D/Builtin colliders, detecting missing `RigidBody2D` components, disabled `enabledContactListener` flags, and sensor collider misconfigurations.
+
+### 2. Smart Node-Based Viewport Automation
+- `browser_manage(action="tap_node" | "swipe_nodes" | "load_scene")`: Converts Cocos Creator 2D/3D node world coordinates into DOM screen coordinates via active scene camera (`worldToScreen`), performing high-precision mouse taps, node-to-node swipe gestures, and instant scene loading without coordinates guessing.
+
+### 3. Auto-Activating Profiler & Memory Telemetry
+- `debug_manage(action="profiler_snapshot")`: Automatically enables engine profiler if hidden, computes fallback FPS from delta time, reports GPU texture & buffer memory usage, V8 JS heap statistics, and live Box2D active body & contact counts.
+
+### 4. 1-Click Broken Reference Auto-Healer
+- `asset_manage(action="repair_broken_references")`: Project-wide scanner & batch healer repairing missing asset GUIDs across `.prefab`, `.scene`, `.pts`, `.json`, and `.anim` assets with bidirectional UUID $\leftrightarrow$ compressed CID expansion and safe `dryRun` simulation mode.
 
 ---
 
@@ -43,26 +59,28 @@ This project originated as an open-source fork of [`cocos-mcp-server`](https://g
 
 ---
 
-## 🛠️ Unified Intent API Cheatsheet (16 Tools)
+## 🛠️ Unified Intent API Cheatsheet (18 Tools)
 
 | Intent Tool | Key Arguments | Purpose & Best Practice |
 | :--- | :--- | :--- |
 | **`scene_manage`** | `action: "get_current" \| "hierarchy" \| "inspect" \| "open" \| "save" \| "create"`, `includeComponents: true` | Scene lifecycle, full tree inspection, and scene scripts. |
 | **`node_manage`** | `action: "query" \| "create" \| "delete" \| "duplicate" \| "transform" \| "reparent"`, `nodeUuid`, `position`, `size`, `queryType` | Universal node search, creation, transform, and hierarchy manipulation. |
 | **`component_manage`** | `action: "add" \| "remove" \| "get" \| "update" \| "bind_event" \| "query_class_info"`, `nodeUuid`, `componentType`, `properties` | Add/remove components, deep property updates with auto-save, click binding, and @ccclass reflection. |
-| **`prefab_manage`** | `action: "list" \| "info" \| "validate" \| "enter" \| "exit" \| "save" \| "instantiate" \| "atomic_edit"`, `prefabPath`, `nodeUuid` | Complete prefab lifecycle, non-destructive editing sessions, and atomic batch edits. |
+| **`prefab_manage`** | `action: "list" \| "info" \| "validate" \| "enter" \| "exit" \| "save" \| "instantiate" \| "atomic_edit" \| "diff" \| "inspect_headless" \| "batch_edit_headless"`, `prefabPath`, `nodeUuid` | Complete prefab lifecycle, non-destructive editing sessions, atomic batch edits, headless diff, offline inspection, and batch headless edits. |
 | **`ui_builder`** | `action: "build_tree" \| "create_dialog" \| "create_button" \| "create_list"`, `tree`, `parent` | Declarative 1-shot UI generation with auto-UITransform, Widget constraints, and Layouts. |
 | **`anim_manage`** | `action: "clip_inspect" \| "clip_create" \| "clip_add_track" \| "clip_add_keyframe" \| "clip_apply_preset" \| "slice_fbx" \| "graph_inspect"`, `animPath`, `property`, `time`, `value` | Timeline AnimationClip editing, property curves, easing modes, animation events, presets, FBX slicing, and AnimGraph state machines. |
-| **`asset_manage`** | `action: "query" \| "resolve" \| "import" \| "delete" \| "dependencies"`, `folder`, `assetPath`, `assets` | Asset discovery, dependency inspection, and smart sub-asset resolution (`@spriteFrame`, `@texture`). |
+| **`asset_manage`** | `action: "query" \| "resolve" \| "import" \| "delete" \| "dependencies" \| "trace_references" \| "repair_broken_references"`, `folder`, `assetPath`, `target`, `replacementMap` | Asset discovery, dependency inspection, smart sub-asset resolution (`@spriteFrame`, `@texture`), bidirectional reference tracing, and broken GUID auto-healing. |
 | **`knowledge_query`** | `action: "query_component" \| "query_rules" \| "query_layout_patterns" \| "get_mcp_guide" \| "list_topics"`, `className`, `topic` | Offline architecture reference for components, coordinates, rules, and live MCP documentation. |
-| **`validation_manage`**| `action: "check_scene" \| "check_assets" \| "check_viewport" \| "capture_snapshot" \| "diff_snapshot" \| "list_snapshots" \| "restore_snapshot"`, `threshold`, `tag`, `snapshotId` | Automated audit for missing UITransforms, corrupt assets, out-of-bounds nodes, and visual snapshot regression diffing. |
+| **`validation_manage`**| `action: "check_scene" \| "check_assets" \| "check_viewport" \| "check_physics" \| "capture_snapshot" \| "diff_snapshot" \| "list_snapshots" \| "restore_snapshot"`, `threshold`, `tag`, `target` | Automated audit for missing UITransforms, corrupt assets, out-of-bounds nodes, disabled physics contact listeners, and visual snapshot regression diffing. |
 | **`batch_execute`** | `operations: [{ tool, args }]`, `autoSave: true` | In-process atomic batch execution running multiple operations in a single IPC transaction. |
 | **`project_manage`** | `action: "get_info" \| "build" \| "run" \| "compile_watch"` | Build settings, preview server control, and TypeScript compilation watcher. |
 | **`scene_view_control`**| `action: "camera_focus" \| "camera_view" \| "grid_toggle" \| "gizmo_mode"`, `nodeUuid`, `viewMode` | Viewport camera manipulation and editor overlays. |
 | **`spine_manage`** | `action: "setup_rig" \| "query_animations" \| "set_animation"`, `nodeUuid`, `spineAssetPath`, `defaultAnimation` | Rapid one-call Spine skeleton or FastSpine rig setup. |
-| **`debug_manage`** | `action: "get_logs" \| "search_logs" \| "get_stats"` | Editor console monitoring and performance telemetry. |
-| **`preferences_manage`**| `action: "get" \| "set" \| "backup"`, `key`, `value` | Editor preferences configuration. |
-| **`broadcast_manage`** | `action: "subscribe" \| "emit" \| "history"`, `channel`, `message` | Editor event monitoring and broadcasting. |
+| **`debug_manage`** | `action: "get_logs" \| "search_logs" \| "get_stats" \| "profiler_snapshot"` | Editor console monitoring, performance telemetry, and live runtime FPS/draw call profiler snapshots with memory metrics. |
+| **`preferences_manage`** | `action: "open_panel" \| "get_config" \| "set_config" \| "reset_config"`, `category`, `path`, `value` | Editor preferences and configuration management. |
+| **`broadcast_manage`** | `action: "subscribe" \| "emit" \| "history" \| "clear"`, `channel`, `data` | Editor/Scene broadcast event bus for pub/sub telemetry. |
+| **`nexus_manage`** | `action: "get_tree_graph" \| "list_scenes" \| "list_workflows" \| "scan_network" \| "query_event" \| "generate_html" \| "batch_query"`, `type`, `target`, `folder`, `pattern` | Tree graph query engine for scene node hierarchies with workflows, function execution pipelines, and mass multi-prefab property queries. |
+| **`browser_manage`** | `action: "status" \| "launch" \| "navigate" \| "tap" \| "swipe" \| "tap_node" \| "swipe_nodes" \| "load_scene" \| "eval" \| "screenshot" \| "get_logs" \| "close"`, `url`, `nodePath`, `startNode`, `endNode`, `scene` | End-to-end automated browser game testing with Playwright Chromium: smart node-based taps/swipes, scene loading, JS eval, and telemetry. |
 
 ---
 
@@ -104,7 +122,39 @@ This project originated as an open-source fork of [`cocos-mcp-server`](https://g
 * Capture baseline scene snapshot before modifications: `validation_manage(action="capture_snapshot", tag="PreEdit")`.
 * Compare scene against snapshot after edits: `validation_manage(action="diff_snapshot")`.
 * Audit scene hierarchy for layout bugs: `validation_manage(action="check_scene")`.
+* Audit colliders and contact listeners: `validation_manage(action="check_physics", target="db://assets/game")`.
 * Scan project and scene for broken GUID references: `validation_manage(action="check_assets")`.
+
+### H. Querying Scene Flow & Function Architecture Trees (Nexus)
+* Query complete scene node hierarchy with attached components & `(Workflow)` triggers:
+  `nexus_manage(action="get_tree_graph", target="fast_test.scene", format="ascii")` or `scene_manage(action="tree_graph", scenePath="fast_test.scene")`.
+* Query execution pipeline call graphs (GitNexus style):
+  `nexus_manage(action="get_tree_graph", type="workflow", target="pipe_...")`.
+* Query all indexed scenes or execution pipelines:
+  `nexus_manage(action="list_scenes")` / `nexus_manage(action="list_workflows")`.
+* Query JsonAsset & pTSAsset event networks:
+  `nexus_manage(action="query_event", eventNameOrUuid="Event.UI.onOpenHomeScreen.json")`.
+
+### I. Automated Browser Gameplay Testing (Playwright Chromium)
+* Launch preview browser and wait for Cocos engine: `browser_manage(action="launch", url="http://127.0.0.1:7456")`.
+* Tap UI button or canvas position: `browser_manage(action="tap", x=640, y=360)`.
+* Tap UI node via world/screen conversion: `browser_manage(action="tap_node", nodePath="Canvas/StartBtn")`.
+* Perform swipe between two nodes: `browser_manage(action="swipe_nodes", startNode=".../BlockA", endNode=".../BlockB")`.
+* Switch scene directly: `browser_manage(action="load_scene", scene="game")`.
+* Perform swipe/drag gesture: `browser_manage(action="swipe", startX=300, startY=400, endX=600, endY=400)`.
+* Execute runtime JS query: `browser_manage(action="eval", code="cc.director.getScene().name")`.
+* Capture screenshot for visual inspection: `browser_manage(action="screenshot")`.
+* Check runtime logs & console errors: `browser_manage(action="get_logs")`.
+* Close browser session: `browser_manage(action="close")`.
+
+### J. Headless Prefab Manipulation, Asset Tracing & Reference Repair
+* Compare two prefabs side-by-side without editor canvas: `prefab_manage(action="diff", sourcePrefab="db://assets/...", targetPrefab="db://assets/...")`.
+* Deep offline inspect of node hierarchy & components: `prefab_manage(action="inspect_headless", prefabPath="db://assets/...", resolveReferences=true)`.
+* Batch extract properties across multi-prefabs in parallel: `nexus_manage(action="batch_query", folder="db://assets/...", pattern="*.prefab", queries=[{ extract: ["position", "components"] }])`.
+* Bidirectional reference tracer: `asset_manage(action="trace_references", target="db://assets/...")`.
+* 1-Click batch reference healer: `asset_manage(action="repair_broken_references", targetPath="db://assets", replacementMap={"broken-uuid": "new-uuid"})\`.
+* Multi-prefab headless modification: `prefab_manage(action="batch_edit_headless", files=["db://assets/..."], operations=[...], dryRun=true)`.
+* Live game profiler telemetry: `debug_manage(action="profiler_snapshot", samples=3)`.
 
 ---
 

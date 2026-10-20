@@ -15,8 +15,8 @@ export class BrowserTools implements ToolExecutor {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['status', 'launch', 'navigate', 'tap', 'swipe', 'eval', 'screenshot', 'get_logs', 'close'],
-                            description: 'Browser testing action opcode: "status" = check Chromium/session state | "launch" = start Chromium preview browser | "navigate" = load preview URL | "tap" = click canvas | "swipe" = touch drag gesture | "eval" = execute JS in browser | "screenshot" = capture viewport | "get_logs" = fetch console telemetry | "close" = stop session'
+                            enum: ['status', 'launch', 'navigate', 'tap', 'swipe', 'tap_node', 'swipe_nodes', 'load_scene', 'eval', 'screenshot', 'get_logs', 'close'],
+                            description: 'Browser testing action opcode: "status" = check Chromium/session state | "launch" = start Chromium preview browser | "navigate" = load preview URL | "tap" = click canvas | "swipe" = touch drag gesture | "tap_node" = click target node via camera/screen mapping | "swipe_nodes" = drag between two nodes | "load_scene" = switch scene directly | "eval" = execute JS in browser | "screenshot" = capture viewport | "get_logs" = fetch console telemetry | "close" = stop session'
                         },
                         headless: {
                             type: 'boolean',
@@ -82,6 +82,22 @@ export class BrowserTools implements ToolExecutor {
                             default: 8,
                             description: 'Intermediate mouse move steps for swipe (default: 8)'
                         },
+                        nodePath: {
+                            type: 'string',
+                            description: 'Target node path in active scene (e.g. "Canvas/StartBtn" or "StartBtn") for tap_node'
+                        },
+                        startNode: {
+                            type: 'string',
+                            description: 'Starting node path for swipe_nodes action'
+                        },
+                        endNode: {
+                            type: 'string',
+                            description: 'Ending node path for swipe_nodes action'
+                        },
+                        scene: {
+                            type: 'string',
+                            description: 'Target scene name or asset path (e.g. "game" or "db://assets/scenes/game.scene") for load_scene'
+                        },
                         code: {
                             type: 'string',
                             description: 'JavaScript code expression to evaluate inside game runtime context (e.g. "cc.director.getScene()?.name")'
@@ -137,6 +153,12 @@ export class BrowserTools implements ToolExecutor {
                 return await this.handleTap(args);
             case 'swipe':
                 return await this.handleSwipe(args);
+            case 'tap_node':
+                return await this.handleTapNode(args);
+            case 'swipe_nodes':
+                return await this.handleSwipeNodes(args);
+            case 'load_scene':
+                return await this.handleLoadScene(args);
             case 'eval':
                 return await this.handleEval(args);
             case 'screenshot':
@@ -231,6 +253,58 @@ export class BrowserTools implements ToolExecutor {
                 args?.steps || 8
             );
             return { success: true, message: res.message, data: res };
+        } catch (err: any) {
+            return { success: false, error: err.message };
+        }
+    }
+
+    private async handleTapNode(args: any): Promise<ToolResponse> {
+        try {
+            const nodePath = args?.nodePath || args?.path || args?.targetNode;
+            if (!nodePath) {
+                return { success: false, error: 'Parameter "nodePath" is required for tap_node action' };
+            }
+            const res = await this.driver.tapNode(nodePath, {
+                doubleClick: args?.doubleClick,
+                delay: args?.delay
+            });
+            return { success: true, message: res.message, data: res };
+        } catch (err: any) {
+            return { success: false, error: err.message };
+        }
+    }
+
+    private async handleSwipeNodes(args: any): Promise<ToolResponse> {
+        try {
+            const startNode = args?.startNode || args?.startNodePath;
+            const endNode = args?.endNode || args?.endNodePath;
+            if (!startNode || !endNode) {
+                return { success: false, error: 'Parameters "startNode" and "endNode" are required for swipe_nodes action' };
+            }
+            const res = await this.driver.swipeNodes(
+                startNode,
+                endNode,
+                args?.duration || 250,
+                args?.steps || 8
+            );
+            return { success: true, message: res.message, data: res };
+        } catch (err: any) {
+            return { success: false, error: err.message };
+        }
+    }
+
+    private async handleLoadScene(args: any): Promise<ToolResponse> {
+        try {
+            const sceneName = args?.scene || args?.sceneName || args?.target;
+            if (!sceneName) {
+                return { success: false, error: 'Parameter "scene" is required for load_scene action' };
+            }
+            const res = await this.driver.loadScene(sceneName);
+            return {
+                success: res.success !== false,
+                message: res.message || `Loaded scene "${sceneName}"`,
+                data: res
+            };
         } catch (err: any) {
             return { success: false, error: err.message };
         }

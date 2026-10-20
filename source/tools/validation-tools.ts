@@ -1,7 +1,11 @@
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ToolDefinition, ToolResponse, ToolExecutor } from '../types';
 import { fixCommonJsonIssues } from '../utils/json-utils';
 import { readSettings } from '../settings';
+import { PrefabAstParser } from '../utils/prefab-ast-parser';
+import { ScriptMetaRegistry } from '../utils/uuid-utils';
 
 declare const Editor: any;
 
@@ -29,15 +33,16 @@ export class ValidationTools implements ToolExecutor {
                         action: {
                             type: 'string',
                             enum: [
-                                'check_scene', 'check_assets', 'check_viewport', 'validate_json',
+                                'check_scene', 'check_assets', 'check_viewport', 'check_physics', 'validate_json',
                                 'capture_snapshot', 'diff_snapshot', 'list_snapshots', 'restore_snapshot'
                             ],
-                            description: 'Validation action opcode: "check_scene" = audit scene hierarchy | "check_assets" = scan broken GUID references | "check_viewport" = find out-of-bounds nodes | "capture_snapshot" = capture scene state snapshot | "diff_snapshot" = visual regression diff against snapshot | "list_snapshots" = list captured snapshots | "restore_snapshot" = restore scene to snapshot | "validate_json" = validate & auto-fix JSON'
+                            description: 'Validation action opcode: "check_physics" = audit colliders, contact listeners, and body types | "check_scene" = audit scene hierarchy | "check_assets" = scan broken GUID references | "check_viewport" = find out-of-bounds nodes | "capture_snapshot" = capture scene state snapshot | "diff_snapshot" = visual regression diff against snapshot | "list_snapshots" = list captured snapshots | "restore_snapshot" = restore scene to snapshot | "validate_json" = validate & auto-fix JSON'
                         },
                         threshold: { type: 'number', default: 3000, description: 'Out-of-bounds pixel threshold for viewport check' },
                         tag: { type: 'string', description: 'Label or tag for capture_snapshot' },
                         snapshotId: { type: 'string', description: 'Target snapshot ID for diff_snapshot or restore_snapshot' },
-                        jsonString: { type: 'string', description: 'JSON string to validate/repair' }
+                        jsonString: { type: 'string', description: 'JSON string to validate/repair' },
+                        target: { type: 'string', description: 'Target file or folder to audit for check_physics (default: "db://assets")' }
                     },
                     required: ['action']
                 }
@@ -168,10 +173,13 @@ export class ValidationTools implements ToolExecutor {
                 return this.listSnapshots();
             case 'restore_snapshot':
                 return await this.restoreSnapshot(args);
+            case 'check_physics':
+            case 'validation_check_physics':
+                return await this.checkPhysics(args);
             default:
                 return {
                     success: false,
-                    error: `Unknown validation tool: ${toolName}. Available: validation_manage, check_scene, check_assets, check_viewport, capture_snapshot, diff_snapshot, list_snapshots, restore_snapshot, validate_json_params`
+                    error: `Unknown validation tool: ${toolName}. Available: validation_manage, check_scene, check_assets, check_viewport, check_physics, capture_snapshot, diff_snapshot, list_snapshots, restore_snapshot, validate_json_params`
                 };
         }
     }
@@ -179,6 +187,8 @@ export class ValidationTools implements ToolExecutor {
     public async handleValidationManage(args: any): Promise<ToolResponse> {
         const action = args?.action || 'check_scene';
         switch (action) {
+            case 'check_physics':
+                return await this.checkPhysics(args);
             case 'check_scene':
                 return await this.checkScene(args);
             case 'check_assets':
@@ -198,7 +208,7 @@ export class ValidationTools implements ToolExecutor {
             default:
                 return {
                     success: false,
-                    error: `Unknown validation action: ${action}. Valid actions: ["check_scene", "check_assets", "check_viewport", "capture_snapshot", "diff_snapshot", "list_snapshots", "restore_snapshot", "validate_json"]`
+                    error: `Unknown validation action: ${action}. Valid actions: ["check_physics", "check_scene", "check_assets", "check_viewport", "capture_snapshot", "diff_snapshot", "list_snapshots", "restore_snapshot", "validate_json"]`
                 };
         }
     }
@@ -874,5 +884,217 @@ export class ValidationTools implements ToolExecutor {
         return `curl -X POST http://127.0.0.1:${port}/mcp \\
   -H "Content-Type: application/json" \\
   -d '${escapedJson}'`;
+    }
+
+    private getProjectRoot(): string {
+        if (typeof Editor !== 'undefined' && Editor?.Project?.path) {
+            return Editor.Project.path;
+        }
+        return path.resolve(__dirname, '../../../..');
+    }
+
+    /**
+     * Audit colliders, contact listeners, and body types across prefabs and scenes
+     */
+    public async checkPhysics(args?: { folder?: string; file?: string; target?: string }): Promise<ToolResponse> {
+        try {
+            const projectRoot = this.getProjectRoot();
+            const target = args?.file || args?.target || args?.folder || 'db://assets';
+
+            const filesToAudit: string[] = [];
+            const resolvedPath = target.startsWith('db://')
+                ? path.join(projectRoot, target.replace(/^db:\/\//, ''))
+                : (path.isAbsolute(target) ? target : path.join(projectRoot, target));
+
+            if (!fs.existsSync(resolvedPath)) {
+                return { success: false, error: `Target path does not exist: ${target}` };
+            }
+
+            const stat = fs.statSync(resolvedPath);
+            if (stat.isFile()) {
+                if (resolvedPath.endsWith('.prefab') || resolvedPath.endsWith('.scene')) {
+                    filesToAudit.push(resolvedPath);
+                } else {
+                    return { success: false, error: `Target file is not a .prefab or .scene: ${target}` };
+                }
+            } else if (stat.isDirectory()) {
+                const scanDir = (dir: string) => {
+                    const entries = fs.readdirSync(dir, { withFileTypes: true });
+                    for (const entry of entries) {
+                        const full = path.join(dir, entry.name);
+                        if (entry.isDirectory()) {
+                            scanDir(full);
+                        } else if (entry.isFile() && (entry.name.endsWith('.prefab') || entry.name.endsWith('.scene'))) {
+                            filesToAudit.push(full);
+                        }
+                    }
+                };
+                scanDir(resolvedPath);
+            }
+
+            if (filesToAudit.length === 0) {
+                return { success: false, error: `No .prefab or .scene files found in ${target}` };
+            }
+
+            const registry = ScriptMetaRegistry.getInstance();
+            let totalNodesAudited = 0;
+            let totalCollidersFound = 0;
+            const warnings: Array<{
+                file: string;
+                node: string;
+                issue: string;
+                severity: 'warning' | 'error' | 'info';
+                message: string;
+                recommendation: string;
+            }> = [];
+
+            for (const filePath of filesToAudit) {
+                try {
+                    const parser = await PrefabAstParser.loadFromFile(filePath);
+                    const rawData = parser.getRawData();
+                    const relPath = 'db://' + path.relative(projectRoot, filePath).replace(/\\/g, '/');
+
+                    const nodeParentMap = new Map<number, number>();
+                    const nodeMap = new Map<number, any>();
+
+                    for (let i = 0; i < rawData.length; i++) {
+                        const item = rawData[i];
+                        if (item && item.__type__ === 'cc.Node') {
+                            nodeMap.set(i, item);
+                            if (Array.isArray(item._children)) {
+                                for (const childRef of item._children) {
+                                    if (childRef && typeof childRef.__id__ === 'number') {
+                                        nodeParentMap.set(childRef.__id__, i);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    for (const [nodeId, node] of nodeMap.entries()) {
+                        totalNodesAudited++;
+                        const components = parser.getComponents(nodeId);
+
+                        const colliderComps: any[] = [];
+                        let rigidBodyComp: any = null;
+
+                        for (const { comp, type } of components) {
+                            const resolvedName = registry.resolveClassName(type);
+                            const isCollider =
+                                type.includes('Collider') ||
+                                resolvedName.includes('Collider') ||
+                                resolvedName.includes('Shape') ||
+                                resolvedName.includes('Box2D.Shape');
+
+                            const isRigidBody =
+                                type === 'cc.RigidBody2D' ||
+                                resolvedName.includes('RigidBody') ||
+                                resolvedName === 'cc.RigidBody2D';
+
+                            if (isCollider) {
+                                colliderComps.push({ comp, type: resolvedName || type });
+                            }
+                            if (isRigidBody) {
+                                rigidBodyComp = comp;
+                            }
+                        }
+
+                        if (colliderComps.length === 0) continue;
+                        totalCollidersFound += colliderComps.length;
+
+                        // Check parents for RigidBody2D if none on this node
+                        let effectiveRb = rigidBodyComp;
+                        let rbNodeName = node._name;
+
+                        if (!effectiveRb) {
+                            let currParentId = nodeParentMap.get(nodeId);
+                            while (currParentId !== undefined) {
+                                const parentNode = nodeMap.get(currParentId);
+                                if (parentNode) {
+                                    const parentComps = parser.getComponents(currParentId);
+                                    for (const { comp, type } of parentComps) {
+                                        const resolvedName = registry.resolveClassName(type);
+                                        if (type === 'cc.RigidBody2D' || resolvedName.includes('RigidBody')) {
+                                            effectiveRb = comp;
+                                            rbNodeName = parentNode._name;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (effectiveRb) break;
+                                currParentId = nodeParentMap.get(currParentId);
+                            }
+                        }
+
+                        if (effectiveRb) {
+                            const contactListenerEnabled =
+                                effectiveRb._enabledContactListener === true ||
+                                effectiveRb.enabledContactListener === true;
+
+                            if (!contactListenerEnabled) {
+                                warnings.push({
+                                    file: relPath,
+                                    node: node._name,
+                                    issue: 'disabled_contact_listener',
+                                    severity: 'warning',
+                                    message: `Node "${node._name}" has ${colliderComps.length} collider(s), but RigidBody2D on "${rbNodeName}" has enabledContactListener: false. Collision callbacks (onBeginContact, onEndContact) will NOT fire.`,
+                                    recommendation: `Set enabledContactListener: true on RigidBody2D (${rbNodeName}) to receive contact events.`
+                                });
+                            }
+
+                            for (const { comp: c, type: colType } of colliderComps) {
+                                const isSensor = c._sensor === true || c.isSensor === true || c._isSensor === true;
+                                const isStaticBody = effectiveRb._type === 0 || effectiveRb.type === 0;
+                                if (isSensor && isStaticBody && !contactListenerEnabled) {
+                                    warnings.push({
+                                        file: relPath,
+                                        node: node._name,
+                                        issue: 'silent_static_sensor',
+                                        severity: 'warning',
+                                        message: `Sensor collider (${colType}) on "${node._name}" is attached to a Static body with disabled contact listener. Trigger events will be completely silent.`,
+                                        recommendation: `Enable enabledContactListener on RigidBody2D or change body type to Kinematic/Dynamic.`
+                                    });
+                                }
+                            }
+                        } else {
+                            warnings.push({
+                                file: relPath,
+                                node: node._name,
+                                issue: 'collider_without_rigidbody',
+                                severity: 'info',
+                                message: `Node "${node._name}" has ${colliderComps.length} collider(s) (${colliderComps.map(c => c.type).join(', ')}) but no attached RigidBody2D in hierarchy. It acts as static geometry and cannot report contact callbacks.`,
+                                recommendation: `Attach a cc.RigidBody2D with enabledContactListener if dynamic movement or contact events are needed.`
+                            });
+                        }
+                    }
+                } catch (e: any) {
+                    warnings.push({
+                        file: path.basename(filePath),
+                        node: 'file_root',
+                        issue: 'parse_error',
+                        severity: 'error',
+                        message: `Failed to audit file: ${e?.message || e}`,
+                        recommendation: 'Check file JSON integrity'
+                    });
+                }
+            }
+
+            return {
+                success: true,
+                message: `Audited physics in ${filesToAudit.length} files: scanned ${totalNodesAudited} nodes, found ${totalCollidersFound} colliders, ${warnings.length} warning(s)`,
+                data: {
+                    totalFilesScanned: filesToAudit.length,
+                    totalNodesAudited,
+                    totalCollidersFound,
+                    warningsCount: warnings.length,
+                    warnings
+                }
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: `Physics audit failed: ${error?.message || error}`
+            };
+        }
     }
 }

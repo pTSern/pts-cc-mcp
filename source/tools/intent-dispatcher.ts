@@ -277,10 +277,13 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['query', 'resolve', 'create', 'delete', 'import', 'dependencies', 'uuid_to_url', 'url_to_uuid', 'save_meta', 'trace_references'],
-                            description: 'Asset action opcode: "trace_references" = bidirectional inbound/outbound and broken reference graph lookup'
+                            enum: ['query', 'resolve', 'create', 'delete', 'import', 'dependencies', 'uuid_to_url', 'url_to_uuid', 'save_meta', 'trace_references', 'repair_broken_references'],
+                            description: 'Asset action opcode: "trace_references" = bidirectional reference graph | "repair_broken_references" = batch replace broken UUIDs/CIDs across assets'
                         },
                         target: { type: 'string', description: 'Target UUID or asset path for trace_references' },
+                        targetPath: { type: 'string', description: 'Folder or file path for repair_broken_references (default: "db://assets")' },
+                        replacementMap: { type: 'object', description: 'Dictionary mapping broken UUID or CID to new replacement UUID or CID for repair_broken_references' },
+                        dryRun: { type: 'boolean', default: false, description: 'Simulate replacements without writing to disk' },
                         deep: { type: 'boolean', default: true, description: 'Deep reference scan' },
                         detectBroken: { type: 'boolean', default: true, description: 'Detect broken/missing external UUID references' },
                         assetPath: { type: 'string', description: 'Smart asset path to resolve (e.g. "db://assets/textures/hero.png@spriteFrame")' },
@@ -330,15 +333,16 @@ export class IntentDispatcher {
                         action: {
                             type: 'string',
                             enum: [
-                                'check_scene', 'check_assets', 'check_viewport', 'validate_json',
+                                'check_scene', 'check_assets', 'check_viewport', 'check_physics', 'validate_json',
                                 'capture_snapshot', 'diff_snapshot', 'list_snapshots', 'restore_snapshot'
                             ],
-                            description: 'Validation action opcode: "check_scene" = audit hierarchy | "check_assets" = scan broken GUIDs | "check_viewport" = find out-of-bounds nodes | "capture_snapshot" = capture scene state snapshot | "diff_snapshot" = visual regression diff against snapshot | "list_snapshots" = list captured snapshots | "restore_snapshot" = restore scene to snapshot | "validate_json" = validate & auto-fix JSON'
+                            description: 'Validation action opcode: "check_physics" = audit colliders, contact listeners, and body types | "check_scene" = audit hierarchy | "check_assets" = scan broken GUIDs | "check_viewport" = find out-of-bounds nodes | "capture_snapshot" = capture scene state snapshot | "diff_snapshot" = visual regression diff against snapshot | "list_snapshots" = list captured snapshots | "restore_snapshot" = restore scene to snapshot | "validate_json" = validate & auto-fix JSON'
                         },
                         threshold: { type: 'number', default: 3000, description: 'Out-of-bounds pixel threshold for viewport check' },
                         tag: { type: 'string', description: 'Label or tag for capture_snapshot' },
                         snapshotId: { type: 'string', description: 'Target snapshot ID for diff_snapshot or restore_snapshot' },
-                        jsonString: { type: 'string', description: 'JSON string to validate/repair' }
+                        jsonString: { type: 'string', description: 'JSON string to validate/repair' },
+                        target: { type: 'string', description: 'Target file or folder to audit for check_physics (default: "db://assets")' }
                     },
                     required: ['action']
                 }
@@ -578,8 +582,8 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['status', 'launch', 'navigate', 'tap', 'swipe', 'eval', 'screenshot', 'get_logs', 'close'],
-                            description: 'Browser testing action opcode: "status" = check Chromium/session state | "launch" = start Chromium preview browser | "navigate" = load preview URL | "tap" = click canvas | "swipe" = touch drag gesture | "eval" = execute JS in browser | "screenshot" = capture viewport | "get_logs" = fetch console telemetry | "close" = stop session'
+                            enum: ['status', 'launch', 'navigate', 'tap', 'swipe', 'tap_node', 'swipe_nodes', 'load_scene', 'eval', 'screenshot', 'get_logs', 'close'],
+                            description: 'Browser testing action opcode: "status" = check Chromium/session state | "launch" = start Chromium preview browser | "navigate" = load preview URL | "tap" = click canvas | "swipe" = touch drag gesture | "tap_node" = click target node via camera/screen mapping | "swipe_nodes" = drag between two nodes | "load_scene" = switch scene directly | "eval" = execute JS in browser | "screenshot" = capture viewport | "get_logs" = fetch console telemetry | "close" = stop session'
                         },
                         headless: {
                             type: 'boolean',
@@ -644,6 +648,22 @@ export class IntentDispatcher {
                             type: 'number',
                             default: 8,
                             description: 'Intermediate mouse move steps for swipe (default: 8)'
+                        },
+                        nodePath: {
+                            type: 'string',
+                            description: 'Target node path in active scene (e.g. "Canvas/StartBtn" or "StartBtn") for tap_node'
+                        },
+                        startNode: {
+                            type: 'string',
+                            description: 'Starting node path for swipe_nodes action'
+                        },
+                        endNode: {
+                            type: 'string',
+                            description: 'Ending node path for swipe_nodes action'
+                        },
+                        scene: {
+                            type: 'string',
+                            description: 'Target scene name or asset path (e.g. "game" or "db://assets/scenes/game.scene") for load_scene'
                         },
                         code: {
                             type: 'string',
@@ -886,7 +906,7 @@ export class IntentDispatcher {
                 if (action === 'create') {
                     return await assetTools.handleAssetOperations({ action: 'create', ...args });
                 }
-                if (action === 'delete' || action === 'import' || action === 'save_meta' || action === 'trace_references') {
+                if (action === 'delete' || action === 'import' || action === 'save_meta' || action === 'trace_references' || action === 'repair_broken_references') {
                     return await assetTools.handleAssetManage(args);
                 }
                 if (action === 'dependencies' || action === 'uuid_to_url' || action === 'url_to_uuid') {
@@ -1089,6 +1109,7 @@ export class IntentDispatcher {
             return await this.dispatchIntent('knowledge_query', { action: toolName === 'mcp_doc_query' ? 'get_mcp_guide' : toolName, ...args });
         }
         if (toolName === 'check_scene' || toolName === 'check_assets' || toolName === 'check_viewport' ||
+            toolName === 'check_physics' || toolName === 'validation_check_physics' ||
             toolName === 'capture_snapshot' || toolName === 'diff_snapshot' || toolName === 'list_snapshots' ||
             toolName === 'restore_snapshot' || toolName === 'validate_json_params') {
             return await this.dispatchIntent('validation_manage', { action: toolName === 'validate_json_params' ? 'validate_json' : toolName, ...args });
@@ -1105,15 +1126,17 @@ export class IntentDispatcher {
         if (toolName === 'batch_query' || toolName === 'nexus_batch_query') {
             return await this.dispatchIntent('nexus_manage', { action: 'batch_query', ...args });
         }
-        if (toolName === 'trace_references' || toolName === 'asset_trace_references') {
-            return await this.dispatchIntent('asset_manage', { action: 'trace_references', ...args });
+        if (toolName === 'trace_references' || toolName === 'asset_trace_references' || toolName === 'repair_broken_references' || toolName === 'asset_repair_broken_references') {
+            return await this.dispatchIntent('asset_manage', { action: toolName.includes('repair') ? 'repair_broken_references' : 'trace_references', ...args });
         }
         if (toolName === 'profiler_snapshot' || toolName === 'debug_profiler_snapshot') {
             return await this.dispatchIntent('debug_manage', { action: 'profiler_snapshot', ...args });
         }
-        if (toolName.startsWith('browser_') || toolName === 'browser_tap' || toolName === 'browser_swipe' || toolName === 'browser_eval' || toolName === 'browser_screenshot') {
+        if (toolName.startsWith('browser_') || toolName === 'browser_tap' || toolName === 'browser_swipe' ||
+            toolName === 'browser_tap_node' || toolName === 'browser_swipe_nodes' || toolName === 'browser_load_scene' ||
+            toolName === 'browser_eval' || toolName === 'browser_screenshot') {
             const subAction = toolName.replace(/^browser_/, '');
-            const action = ['status', 'launch', 'navigate', 'tap', 'swipe', 'eval', 'screenshot', 'get_logs', 'close'].includes(subAction) ? subAction : args?.action || 'status';
+            const action = ['status', 'launch', 'navigate', 'tap', 'swipe', 'tap_node', 'swipe_nodes', 'load_scene', 'eval', 'screenshot', 'get_logs', 'close'].includes(subAction) ? subAction : args?.action || 'status';
             return await this.dispatchIntent('browser_manage', { action, ...args });
         }
 

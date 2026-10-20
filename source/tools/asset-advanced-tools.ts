@@ -328,6 +328,8 @@ export class AssetAdvancedTools implements ToolExecutor {
                 return await this.generateAvailableUrl(args?.url || 'db://assets/new_asset');
             case 'trace_references':
                 return await this.traceReferences(args);
+            case 'repair_broken_references':
+                return await this.repairBrokenReferences(args);
             default:
                 return { success: false, error: `Unknown asset manage action: ${action}` };
         }
@@ -1341,6 +1343,165 @@ export class AssetAdvancedTools implements ToolExecutor {
             return {
                 success: false,
                 error: `Trace references failed: ${error?.message || error}`
+            };
+        }
+    }
+
+    /**
+     * Batch replace broken or obsolete UUIDs and compressed CIDs across assets
+     */
+    public async repairBrokenReferences(args: {
+        targetPath?: string;
+        replacementMap?: Record<string, string>;
+        dryRun?: boolean;
+    }): Promise<ToolResponse> {
+        try {
+            const rawMap = args?.replacementMap;
+            if (!rawMap || typeof rawMap !== 'object' || Object.keys(rawMap).length === 0) {
+                return {
+                    success: false,
+                    error: 'repair_broken_references requires a non-empty "replacementMap" object mapping broken UUIDs/CIDs to replacement UUIDs/CIDs.'
+                };
+            }
+
+            const projectRoot = this.getProjectRoot();
+            const target = args?.targetPath || 'db://assets';
+            const resolvedPath = target.startsWith('db://')
+                ? path.join(projectRoot, target.replace(/^db:\/\//, ''))
+                : (path.isAbsolute(target) ? target : path.join(projectRoot, target));
+
+            if (!fs.existsSync(resolvedPath)) {
+                return { success: false, error: `Target path not found: ${target}` };
+            }
+
+            // Build bidirectional pairs (both standard UUID and compressed CID)
+            const replacePairs: Array<{ search: string; replace: string; regex: RegExp }> = [];
+            for (const [src, tgt] of Object.entries(rawMap)) {
+                if (!src || !tgt) continue;
+                const cleanSrc = src.trim();
+                const cleanTgt = tgt.trim();
+
+                // 1. Direct match (case-insensitive for UUID)
+                replacePairs.push({
+                    search: cleanSrc,
+                    replace: cleanTgt,
+                    regex: new RegExp(cleanSrc.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi')
+                });
+
+                // 2. Expand UUID <-> CID if 36-char UUID or 22/23-char CID
+                if (cleanSrc.length === 36 && cleanTgt.length === 36) {
+                    const srcCid = compressUuid(cleanSrc);
+                    const tgtCid = compressUuid(cleanTgt);
+                    if (srcCid && tgtCid) {
+                        replacePairs.push({
+                            search: srcCid,
+                            replace: tgtCid,
+                            regex: new RegExp(srcCid.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g')
+                        });
+                    }
+                } else if ((cleanSrc.length === 22 || cleanSrc.length === 23) && (cleanTgt.length === 22 || cleanTgt.length === 23)) {
+                    const srcUuid = decompressUuid(cleanSrc).toLowerCase();
+                    const tgtUuid = decompressUuid(cleanTgt).toLowerCase();
+                    if (srcUuid && tgtUuid) {
+                        replacePairs.push({
+                            search: srcUuid,
+                            replace: tgtUuid,
+                            regex: new RegExp(srcUuid.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi')
+                        });
+                    }
+                }
+            }
+
+            const scannableExtensions = new Set(['.prefab', '.scene', '.pts', '.json', '.anim']);
+            const filesToScan: string[] = [];
+
+            const stat = fs.statSync(resolvedPath);
+            if (stat.isFile()) {
+                const ext = path.extname(resolvedPath).toLowerCase();
+                if (scannableExtensions.has(ext)) {
+                    filesToScan.push(resolvedPath);
+                }
+            } else if (stat.isDirectory()) {
+                const scanDir = (dir: string) => {
+                    const entries = fs.readdirSync(dir, { withFileTypes: true });
+                    for (const entry of entries) {
+                        const full = path.join(dir, entry.name);
+                        if (entry.isDirectory()) {
+                            scanDir(full);
+                        } else if (entry.isFile()) {
+                            const ext = path.extname(entry.name).toLowerCase();
+                            if (scannableExtensions.has(ext)) {
+                                filesToScan.push(full);
+                            }
+                        }
+                    }
+                };
+                scanDir(resolvedPath);
+            }
+
+            const dryRun = args?.dryRun === true;
+            const modifiedFiles: Array<{
+                file: string;
+                relPath: string;
+                replacementsCount: number;
+                details: Array<{ search: string; replace: string; count: number }>;
+            }> = [];
+
+            for (const filePath of filesToScan) {
+                try {
+                    let content = fs.readFileSync(filePath, 'utf8');
+                    let modified = false;
+                    const fileReplacements: Array<{ search: string; replace: string; count: number }> = [];
+                    let totalInFile = 0;
+
+                    for (const pair of replacePairs) {
+                        const matches = content.match(pair.regex);
+                        if (matches && matches.length > 0) {
+                            content = content.replace(pair.regex, pair.replace);
+                            modified = true;
+                            totalInFile += matches.length;
+                            fileReplacements.push({
+                                search: pair.search,
+                                replace: pair.replace,
+                                count: matches.length
+                            });
+                        }
+                    }
+
+                    if (modified) {
+                        const relPath = 'db://' + path.relative(projectRoot, filePath).replace(/\\/g, '/');
+                        if (!dryRun) {
+                            fs.writeFileSync(filePath, content, 'utf8');
+                            if (typeof Editor !== 'undefined' && Editor?.Message?.send) {
+                                Editor.Message.send('asset-db', 'refresh-asset', relPath);
+                            }
+                        }
+                        modifiedFiles.push({
+                            file: path.basename(filePath),
+                            relPath,
+                            replacementsCount: totalInFile,
+                            details: fileReplacements
+                        });
+                    }
+                } catch (e) {
+                    // Ignore unreadable or locked files
+                }
+            }
+
+            return {
+                success: true,
+                message: `${dryRun ? '[DryRun] Simulated' : 'Successfully repaired'} references in ${modifiedFiles.length} file(s) (${filesToScan.length} scanned)`,
+                data: {
+                    dryRun,
+                    totalFilesScanned: filesToScan.length,
+                    filesModifiedCount: modifiedFiles.length,
+                    modifiedFiles
+                }
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: `Repair broken references failed: ${error?.message || error}`
             };
         }
     }

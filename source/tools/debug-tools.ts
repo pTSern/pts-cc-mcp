@@ -317,19 +317,35 @@ export class DebugTools implements ToolExecutor {
             const evalScript = `(() => {
                 const profiler = window.cc?.profiler;
                 const director = window.cc?.director;
+                if (profiler && typeof profiler.isShowingStats === 'function' && !profiler.isShowingStats()) {
+                    try { profiler.showStats(); } catch {}
+                }
                 const stats = profiler?._stats || {};
-                const fps = stats.fps?.counter?.value ?? (director?.getActualFps ? director.getActualFps() : 60);
-                const frameTimeMs = stats.frame?.counter?.value ?? 16.6;
-                const drawTimeMs = stats.draws?.counter?.value ?? 2.0;
-                const physicsTimeMs = stats.physics?.counter?.value ?? 1.5;
+                const dt = director?.getDeltaTime ? director.getDeltaTime() : 0.0166;
+                const rawFps = stats.fps?.counter?.value;
+                const fps = (typeof rawFps === 'number' && rawFps >= 5) ? rawFps : (dt > 0 ? Math.round(1 / dt) : 60);
+                const frameTimeMs = stats.frame?.counter?.value ?? (dt > 0 ? dt * 1000 : 16.6);
+                const drawTimeMs = stats.render?.counter?.value ?? stats.logic?.counter?.value ?? 2.0;
+                const physicsTimeMs = stats.physics?.counter?.value ?? 0;
                 const drawCalls = stats.draws?.counter?.value ?? 0;
                 const triangles = stats.tricount?.counter?.value ?? 0;
+                const textureMemory = stats.textureMemory?.counter?.value ?? 0;
+                const bufferMemory = stats.bufferMemory?.counter?.value ?? 0;
+                const heapUsedMb = window.performance?.memory?.usedJSHeapSize
+                    ? Math.round((window.performance.memory.usedJSHeapSize / (1024 * 1024)) * 10) / 10
+                    : 0;
                 
                 let activePhysicsBodies = 0;
+                let activePhysicsContacts = 0;
                 try {
                     const physicsSystem = window.cc?.PhysicsSystem2D?.instance;
-                    if (physicsSystem?.physicsWorld?.bodies) {
+                    if (physicsSystem?.physicsWorld?.impl?.GetBodyCount) {
+                        activePhysicsBodies = physicsSystem.physicsWorld.impl.GetBodyCount();
+                    } else if (physicsSystem?.physicsWorld?.bodies) {
                         activePhysicsBodies = physicsSystem.physicsWorld.bodies.length;
+                    }
+                    if (physicsSystem?.physicsWorld?.impl?.GetContactCount) {
+                        activePhysicsContacts = physicsSystem.physicsWorld.impl.GetContactCount();
                     }
                 } catch {}
 
@@ -340,7 +356,11 @@ export class DebugTools implements ToolExecutor {
                     physicsTimeMs: Math.round(physicsTimeMs * 10) / 10,
                     drawCalls: typeof drawCalls === 'number' ? drawCalls : 0,
                     triangles: typeof triangles === 'number' ? triangles : 0,
+                    textureMemory,
+                    bufferMemory,
+                    heapUsedMb,
                     activePhysicsBodies,
+                    activePhysicsContacts,
                     isHanging: frameTimeMs > 100 || drawTimeMs > 100
                 };
             })()`;
@@ -380,7 +400,15 @@ export class DebugTools implements ToolExecutor {
                     physicsTimeMs: avgPhysicsTime,
                     drawCalls: lastSample.drawCalls,
                     triangles: lastSample.triangles,
-                    activePhysicsBodies: lastSample.activePhysicsBodies,
+                    memory: {
+                        textureMemory: lastSample.textureMemory,
+                        bufferMemory: lastSample.bufferMemory,
+                        heapUsedMb: lastSample.heapUsedMb
+                    },
+                    physics: {
+                        activeBodies: lastSample.activePhysicsBodies,
+                        activeContacts: lastSample.activePhysicsContacts
+                    },
                     isHanging,
                     samplesCount: samplesData.length
                 }

@@ -259,6 +259,171 @@ export class BrowserTestingDriver {
         return result;
     }
 
+    public async getNodeClientCoordinates(nodePath: string): Promise<any> {
+        if (!this.page || this.page.isClosed()) {
+            throw new Error('Browser is not running. Call launch action first.');
+        }
+
+        const res = await this.page.evaluate((targetPath: string) => {
+            try {
+                const cc = (window as any).cc;
+                if (!cc) return { success: false, error: 'Cocos engine not initialized' };
+
+                let targetNode = cc.find(targetPath);
+                if (!targetNode) {
+                    const scene = cc.director?.getScene?.();
+                    if (scene) {
+                        const cleanTarget = targetPath.split('/').pop()?.toLowerCase();
+                        const search = (node: any): any => {
+                            if (node.name.toLowerCase() === cleanTarget) return node;
+                            for (const c of node.children) {
+                                const found = search(c);
+                                if (found) return found;
+                            }
+                            return null;
+                        };
+                        targetNode = search(scene);
+                    }
+                }
+
+                if (!targetNode) {
+                    return { success: false, error: `Node not found in scene: "${targetPath}"` };
+                }
+
+                const canvas = document.querySelector('canvas') || document.querySelector('#GameCanvas');
+                if (!canvas) {
+                    return { success: false, error: 'HTML canvas element not found in DOM' };
+                }
+                const rect = canvas.getBoundingClientRect();
+
+                let screenX = 0;
+                let screenY = 0;
+
+                const camera = cc.Camera?.findCamera ? cc.Camera.findCamera(targetNode) : null;
+                const activeCamera = camera || (cc.director?.getScene?.()?.getComponentInChildren?.(cc.Camera));
+
+                if (activeCamera && typeof activeCamera.worldToScreen === 'function') {
+                    const screenPos = new cc.Vec3();
+                    activeCamera.worldToScreen(targetNode.worldPosition, screenPos);
+                    screenX = screenPos.x;
+                    screenY = screenPos.y;
+                } else {
+                    screenX = targetNode.worldPosition.x;
+                    screenY = targetNode.worldPosition.y;
+                }
+
+                const canvasWidth = canvas.width || rect.width;
+                const canvasHeight = canvas.height || rect.height;
+
+                const clientX = rect.left + (screenX / canvasWidth) * rect.width;
+                const clientY = rect.top + ((canvasHeight - screenY) / canvasHeight) * rect.height;
+
+                return {
+                    success: true,
+                    nodeName: targetNode.name,
+                    worldPosition: {
+                        x: Math.round(targetNode.worldPosition.x * 10) / 10,
+                        y: Math.round(targetNode.worldPosition.y * 10) / 10,
+                        z: Math.round(targetNode.worldPosition.z * 10) / 10
+                    },
+                    clientPosition: {
+                        x: Math.round(clientX),
+                        y: Math.round(clientY)
+                    }
+                };
+            } catch (err: any) {
+                return { success: false, error: err.message || String(err) };
+            }
+        }, nodePath);
+
+        return res;
+    }
+
+    public async tapNode(nodePath: string, options: { doubleClick?: boolean; delay?: number } = {}): Promise<any> {
+        const coords = await this.getNodeClientCoordinates(nodePath);
+        if (!coords || !coords.success) {
+            throw new Error(coords?.error || `Failed to find client coordinates for node: ${nodePath}`);
+        }
+
+        await this.tap(coords.clientPosition.x, coords.clientPosition.y, options);
+        return {
+            success: true,
+            nodePath,
+            nodeName: coords.nodeName,
+            worldPosition: coords.worldPosition,
+            clientPosition: coords.clientPosition,
+            message: `Tapped node "${coords.nodeName}" at viewport (${coords.clientPosition.x}, ${coords.clientPosition.y})`
+        };
+    }
+
+    public async swipeNodes(startNodePath: string, endNodePath: string, durationMs: number = 250, steps: number = 8): Promise<any> {
+        const [startCoords, endCoords] = await Promise.all([
+            this.getNodeClientCoordinates(startNodePath),
+            this.getNodeClientCoordinates(endNodePath)
+        ]);
+
+        if (!startCoords || !startCoords.success) {
+            throw new Error(startCoords?.error || `Failed to find start node: ${startNodePath}`);
+        }
+        if (!endCoords || !endCoords.success) {
+            throw new Error(endCoords?.error || `Failed to find end node: ${endNodePath}`);
+        }
+
+        const swipeRes = await this.swipe(
+            startCoords.clientPosition.x,
+            startCoords.clientPosition.y,
+            endCoords.clientPosition.x,
+            endCoords.clientPosition.y,
+            durationMs,
+            steps
+        );
+
+        return {
+            success: true,
+            startNode: { path: startNodePath, name: startCoords.nodeName, coords: startCoords.clientPosition },
+            endNode: { path: endNodePath, name: endCoords.nodeName, coords: endCoords.clientPosition },
+            gesture: swipeRes.gesture,
+            message: `Swiped from "${startCoords.nodeName}" (${startCoords.clientPosition.x}, ${startCoords.clientPosition.y}) to "${endCoords.nodeName}" (${endCoords.clientPosition.x}, ${endCoords.clientPosition.y})`
+        };
+    }
+
+    public async loadScene(sceneName: string): Promise<any> {
+        if (!this.page || this.page.isClosed()) {
+            throw new Error('Browser is not running. Call launch action first.');
+        }
+
+        const res = await this.page.evaluate((targetScene: string) => {
+            return new Promise((resolve) => {
+                const cc = (window as any).cc;
+                if (!cc || !cc.director) {
+                    return resolve({ success: false, error: 'Cocos director not found in window context' });
+                }
+
+                let cleanName = targetScene;
+                if (cleanName.includes('/')) {
+                    cleanName = cleanName.split('/').pop() || cleanName;
+                }
+                if (cleanName.endsWith('.scene')) {
+                    cleanName = cleanName.slice(0, -6);
+                }
+
+                cc.director.loadScene(cleanName, (err: any, loadedScene: any) => {
+                    if (err) {
+                        resolve({ success: false, error: err.message || String(err) });
+                    } else {
+                        resolve({
+                            success: true,
+                            sceneName: cleanName,
+                            message: `Scene "${cleanName}" loaded successfully`
+                        });
+                    }
+                });
+            });
+        }, sceneName);
+
+        return res;
+    }
+
     public async screenshot(savePath?: string, returnBase64: boolean = false, fullPage: boolean = false): Promise<any> {
         if (!this.page || this.page.isClosed()) {
             throw new Error('Browser is not running. Call launch action first.');

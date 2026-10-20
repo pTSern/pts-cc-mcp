@@ -199,6 +199,11 @@ export class ScriptMetaRegistry {
         return { type: rawType, isEngineType: false };
     }
 
+    public resolveClassName(rawType: string): string {
+        const resolved = this.resolveType(rawType);
+        return resolved.className || resolved.type || rawType;
+    }
+
     public getInfoByUuid(uuid: string): ScriptClassInfo | undefined {
         this.refresh();
         return this.uuidToInfo.get(uuid);
