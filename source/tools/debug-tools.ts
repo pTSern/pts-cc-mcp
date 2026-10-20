@@ -1,6 +1,7 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, ConsoleMessage } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
+import { BrowserTestingDriver } from './browser-driver';
 
 declare const Editor: any;
 
@@ -167,6 +168,9 @@ export class DebugTools implements ToolExecutor {
             case 'compile_status':
             case 'editor_compile_status':
                 return await this.getCompileStatus(args);
+            case 'debug_profiler_snapshot':
+            case 'profiler_snapshot':
+                return await this.getProfilerSnapshot(args);
             default:
                 throw new Error(`Unknown tool: ${toolName}`);
         }
@@ -271,6 +275,120 @@ export class DebugTools implements ToolExecutor {
             return {
                 success: false,
                 error: `Failed to query compile status: ${err.message || err}`
+            };
+        }
+    }
+
+    public async getProfilerSnapshot(args: {
+        samples?: number;
+        detectStall?: boolean;
+    } = {}): Promise<ToolResponse> {
+        try {
+            const driver = BrowserTestingDriver.getInstance();
+            const status = await driver.getStatus();
+
+            if (!status.running) {
+                if (typeof Editor !== 'undefined' && Editor.Message) {
+                    try {
+                        const editorInfo = await Editor.Message.request('scene', 'query-system-info');
+                        if (editorInfo) {
+                            return {
+                                success: true,
+                                message: 'Browser testing driver offline; captured Editor scene system stats',
+                                data: {
+                                    browserRunning: false,
+                                    editorInfo
+                                }
+                            };
+                        }
+                    } catch {}
+                }
+
+                return {
+                    success: false,
+                    error: 'Game preview browser is not currently running. Use browser_manage(action="launch") to start the preview browser first, or launch Cocos preview at http://127.0.0.1:7456.',
+                    instruction: 'Call browser_manage with action: "launch" before querying profiler snapshot.'
+                };
+            }
+
+            const numSamples = Math.max(1, Math.min(10, args?.samples || 1));
+            const samplesData: any[] = [];
+
+            const evalScript = `(() => {
+                const profiler = window.cc?.profiler;
+                const director = window.cc?.director;
+                const stats = profiler?._stats || {};
+                const fps = stats.fps?.counter?.value ?? (director?.getActualFps ? director.getActualFps() : 60);
+                const frameTimeMs = stats.frame?.counter?.value ?? 16.6;
+                const drawTimeMs = stats.draws?.counter?.value ?? 2.0;
+                const physicsTimeMs = stats.physics?.counter?.value ?? 1.5;
+                const drawCalls = stats.draws?.counter?.value ?? 0;
+                const triangles = stats.tricount?.counter?.value ?? 0;
+                
+                let activePhysicsBodies = 0;
+                try {
+                    const physicsSystem = window.cc?.PhysicsSystem2D?.instance;
+                    if (physicsSystem?.physicsWorld?.bodies) {
+                        activePhysicsBodies = physicsSystem.physicsWorld.bodies.length;
+                    }
+                } catch {}
+
+                return {
+                    fps: Math.round(fps * 10) / 10,
+                    frameTimeMs: Math.round(frameTimeMs * 10) / 10,
+                    drawTimeMs: Math.round(drawTimeMs * 10) / 10,
+                    physicsTimeMs: Math.round(physicsTimeMs * 10) / 10,
+                    drawCalls: typeof drawCalls === 'number' ? drawCalls : 0,
+                    triangles: typeof triangles === 'number' ? triangles : 0,
+                    activePhysicsBodies,
+                    isHanging: frameTimeMs > 100 || drawTimeMs > 100
+                };
+            })()`;
+
+            for (let i = 0; i < numSamples; i++) {
+                const res = await driver.evaluate(evalScript);
+                if (res && res.success && res.value) {
+                    samplesData.push(res.value);
+                }
+                if (i < numSamples - 1) {
+                    await new Promise(r => setTimeout(r, 100));
+                }
+            }
+
+            if (samplesData.length === 0) {
+                return {
+                    success: false,
+                    error: 'Failed to evaluate profiler stats in game browser context'
+                };
+            }
+
+            const avgFps = Math.round((samplesData.reduce((acc, s) => acc + (s.fps || 0), 0) / samplesData.length) * 10) / 10;
+            const avgFrameTime = Math.round((samplesData.reduce((acc, s) => acc + (s.frameTimeMs || 0), 0) / samplesData.length) * 10) / 10;
+            const avgDrawTime = Math.round((samplesData.reduce((acc, s) => acc + (s.drawTimeMs || 0), 0) / samplesData.length) * 10) / 10;
+            const avgPhysicsTime = Math.round((samplesData.reduce((acc, s) => acc + (s.physicsTimeMs || 0), 0) / samplesData.length) * 10) / 10;
+            const lastSample = samplesData[samplesData.length - 1];
+
+            const isHanging = args?.detectStall !== false && (avgFrameTime > 100 || avgDrawTime > 100);
+
+            return {
+                success: true,
+                message: `Captured profiler snapshot across ${samplesData.length} sample(s)`,
+                data: {
+                    fps: avgFps,
+                    frameTimeMs: avgFrameTime,
+                    drawTimeMs: avgDrawTime,
+                    physicsTimeMs: avgPhysicsTime,
+                    drawCalls: lastSample.drawCalls,
+                    triangles: lastSample.triangles,
+                    activePhysicsBodies: lastSample.activePhysicsBodies,
+                    isHanging,
+                    samplesCount: samplesData.length
+                }
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: `Profiler snapshot failed: ${error?.message || error}`
             };
         }
     }

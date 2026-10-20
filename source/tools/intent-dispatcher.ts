@@ -150,16 +150,25 @@ export class IntentDispatcher {
             // 4. Prefab Management
             {
                 name: 'prefab_manage',
-                description: 'PREFAB LIFECYCLE & EDITING: List, create, instantiate, enter/exit edit mode, save, unlink, apply/revert overrides, and atomic edit transactions.',
+                description: 'PREFAB LIFECYCLE & EDITING: List, create, instantiate, enter/exit edit mode, save, unlink, apply/revert overrides, side-by-side headless diffing, offline inspection, and batch headless editing.',
                 inputSchema: {
                     type: 'object',
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['list', 'info', 'validate', 'create', 'delete', 'instantiate', 'unlink', 'apply', 'revert', 'enter', 'exit', 'save', 'atomic_edit'],
-                            description: 'Prefab action opcode'
+                            enum: ['list', 'info', 'validate', 'create', 'delete', 'instantiate', 'unlink', 'apply', 'revert', 'enter', 'exit', 'save', 'atomic_edit', 'diff', 'inspect_headless', 'batch_edit_headless'],
+                            description: 'Prefab action opcode: "diff" = side-by-side headless compare | "inspect_headless" = offline tree inspection | "batch_edit_headless" = programmatic multi-prefab edits'
                         },
                         prefabPath: { type: 'string', description: 'Prefab asset path (e.g. "db://assets/prefabs/Hero.prefab")' },
+                        sourcePrefab: { type: 'string', description: 'Source prefab path for diff action' },
+                        targetPrefab: { type: 'string', description: 'Target prefab path for diff action' },
+                        ignoreProperties: { type: 'array', items: { type: 'string' }, description: 'Properties to ignore in diff' },
+                        filterComponents: { type: 'array', items: { type: 'string' }, description: 'Components to filter in diff' },
+                        targetNode: { type: 'string', description: 'Target node path or name for inspect_headless' },
+                        includeComponents: { type: 'boolean', default: true, description: 'Include component details in inspect_headless' },
+                        resolveReferences: { type: 'boolean', default: true, description: 'Resolve __id__ pointers in inspect_headless' },
+                        files: { type: 'array', items: { type: 'string' }, description: 'Target files or glob patterns for batch_edit_headless' },
+                        dryRun: { type: 'boolean', default: false, description: 'Simulate batch_edit_headless without writing to disk' },
                         folder: { type: 'string', default: 'db://assets', description: 'Folder to scan for prefabs' },
                         nodeUuid: { type: 'string', description: 'Target node UUID' },
                         parentUuid: { type: 'string', description: 'Parent node UUID for instantiation' },
@@ -172,7 +181,7 @@ export class IntentDispatcher {
                         },
                         operations: {
                             type: 'array',
-                            description: 'Batch operations array for atomic_edit action'
+                            description: 'Batch operations array for atomic_edit or batch_edit_headless action'
                         }
                     },
                     required: ['action']
@@ -268,9 +277,12 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['query', 'resolve', 'create', 'delete', 'import', 'dependencies', 'uuid_to_url', 'url_to_uuid', 'save_meta'],
-                            description: 'Asset action opcode'
+                            enum: ['query', 'resolve', 'create', 'delete', 'import', 'dependencies', 'uuid_to_url', 'url_to_uuid', 'save_meta', 'trace_references'],
+                            description: 'Asset action opcode: "trace_references" = bidirectional inbound/outbound and broken reference graph lookup'
                         },
+                        target: { type: 'string', description: 'Target UUID or asset path for trace_references' },
+                        deep: { type: 'boolean', default: true, description: 'Deep reference scan' },
+                        detectBroken: { type: 'boolean', default: true, description: 'Detect broken/missing external UUID references' },
                         assetPath: { type: 'string', description: 'Smart asset path to resolve (e.g. "db://assets/textures/hero.png@spriteFrame")' },
                         ccType: { type: 'string', description: 'Filter assets by Cocos class (e.g. "cc.ImageAsset", "cc.Prefab", "cc.Material")' },
                         pattern: { type: 'string', description: 'Search pattern (e.g. "db://assets/**/*.png")' },
@@ -431,15 +443,17 @@ export class IntentDispatcher {
             // 14. Debug & Diagnostics
             {
                 name: 'debug_manage',
-                description: 'DEBUG & SYSTEM: Inspect editor console logs, search project log files, get system performance statistics, and evaluate expressions.',
+                description: 'DEBUG & SYSTEM: Inspect editor console logs, search project log files, get system performance statistics, live profiler metrics, draw calls, draw time, and detect engine stalls.',
                 inputSchema: {
                     type: 'object',
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['get_logs', 'clear_logs', 'read_log_file', 'system_info', 'compile_status'],
-                            description: 'Debug action opcode'
+                            enum: ['get_logs', 'clear_logs', 'read_log_file', 'system_info', 'compile_status', 'profiler_snapshot'],
+                            description: 'Debug action opcode: "profiler_snapshot" = live FPS, frame/draw/physics latency, draw calls, triangles & hang detection'
                         },
+                        samples: { type: 'number', default: 1, description: 'Number of metric samples to average for profiler_snapshot' },
+                        detectStall: { type: 'boolean', default: true, description: 'Detect game stalls or long frames (> 100ms)' },
                         limit: { type: 'number', default: 50, description: 'Log count limit' },
                         filter: { type: 'string', description: 'Filter pattern or level (error, warn, info)' },
                         logType: { type: 'string', enum: ['project', 'editor'], default: 'project' },
@@ -498,8 +512,21 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['get_tree_graph', 'list_scenes', 'list_workflows', 'scan_network', 'query_event', 'generate_html'],
-                            description: 'Nexus action opcode'
+                            enum: ['get_tree_graph', 'list_scenes', 'list_workflows', 'scan_network', 'query_event', 'generate_html', 'batch_query'],
+                            description: 'Nexus action opcode: "batch_query" = parallel property extraction across multiple prefabs'
+                        },
+                        folder: { type: 'string', description: 'Folder path for batch_query (e.g. "db://assets/game/level/fabs")' },
+                        pattern: { type: 'string', default: 'level_*.prefab', description: 'Filename wildcard filter for batch_query' },
+                        queries: {
+                            type: 'array',
+                            description: 'Array of { targetPath, extract } queries to run on each prefab',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    targetPath: { type: 'string', description: 'Subpath in prefab node tree' },
+                                    extract: { type: 'array', items: { type: 'string' }, description: 'Properties to extract' }
+                                }
+                            }
                         },
                         type: {
                             type: 'string',
@@ -797,6 +824,15 @@ export class IntentDispatcher {
                 const prefabTools = this.tools['prefab'];
                 if (!prefabTools) throw new Error('Prefab tools not initialized');
 
+                if (action === 'diff') {
+                    return await prefabTools.diff(args);
+                }
+                if (action === 'inspect_headless') {
+                    return await prefabTools.inspectHeadless(args);
+                }
+                if (action === 'batch_edit_headless') {
+                    return await prefabTools.batchEditHeadless(args);
+                }
                 if (action === 'list' || action === 'info' || action === 'validate') {
                     return await prefabTools.handlePrefabBrowse(args);
                 }
@@ -850,7 +886,7 @@ export class IntentDispatcher {
                 if (action === 'create') {
                     return await assetTools.handleAssetOperations({ action: 'create', ...args });
                 }
-                if (action === 'delete' || action === 'import' || action === 'save_meta') {
+                if (action === 'delete' || action === 'import' || action === 'save_meta' || action === 'trace_references') {
                     return await assetTools.handleAssetManage(args);
                 }
                 if (action === 'dependencies' || action === 'uuid_to_url' || action === 'url_to_uuid') {
@@ -951,6 +987,9 @@ export class IntentDispatcher {
                 if (action === 'compile_status') {
                     return await debugTools.getCompileStatus(args);
                 }
+                if (action === 'profiler_snapshot') {
+                    return await debugTools.getProfilerSnapshot(args);
+                }
                 return await debugTools.handleDebugConsole(args);
             }
 
@@ -980,14 +1019,19 @@ export class IntentDispatcher {
 
             case 'nexus_manage':
             case 'nexus_get_tree_graph': {
+                const nexusTools = this.tools['nexus'];
+                if (!nexusTools) throw new Error('Nexus tools not initialized');
+
+                if (action === 'batch_query') {
+                    return await nexusTools.handleBatchQuery(args);
+                }
+
                 if (!isNexusAvailable()) {
                     return {
                         success: false,
                         error: 'pts-nexus extension is not installed or is disabled in the project.'
                     };
                 }
-                const nexusTools = this.tools['nexus'];
-                if (!nexusTools) throw new Error('Nexus tools not initialized');
                 if (toolName === 'nexus_get_tree_graph') {
                     return await nexusTools.execute('nexus_get_tree_graph', args);
                 }
@@ -1048,6 +1092,24 @@ export class IntentDispatcher {
             toolName === 'capture_snapshot' || toolName === 'diff_snapshot' || toolName === 'list_snapshots' ||
             toolName === 'restore_snapshot' || toolName === 'validate_json_params') {
             return await this.dispatchIntent('validation_manage', { action: toolName === 'validate_json_params' ? 'validate_json' : toolName, ...args });
+        }
+        if (toolName === 'prefab_diff' || toolName === 'diff_prefab' || toolName === 'diff_prefabs') {
+            return await this.dispatchIntent('prefab_manage', { action: 'diff', ...args });
+        }
+        if (toolName === 'inspect_headless' || toolName === 'prefab_inspect_headless') {
+            return await this.dispatchIntent('prefab_manage', { action: 'inspect_headless', ...args });
+        }
+        if (toolName === 'batch_edit_headless' || toolName === 'prefab_batch_edit_headless') {
+            return await this.dispatchIntent('prefab_manage', { action: 'batch_edit_headless', ...args });
+        }
+        if (toolName === 'batch_query' || toolName === 'nexus_batch_query') {
+            return await this.dispatchIntent('nexus_manage', { action: 'batch_query', ...args });
+        }
+        if (toolName === 'trace_references' || toolName === 'asset_trace_references') {
+            return await this.dispatchIntent('asset_manage', { action: 'trace_references', ...args });
+        }
+        if (toolName === 'profiler_snapshot' || toolName === 'debug_profiler_snapshot') {
+            return await this.dispatchIntent('debug_manage', { action: 'profiler_snapshot', ...args });
         }
         if (toolName.startsWith('browser_') || toolName === 'browser_tap' || toolName === 'browser_swipe' || toolName === 'browser_eval' || toolName === 'browser_screenshot') {
             const subAction = toolName.replace(/^browser_/, '');

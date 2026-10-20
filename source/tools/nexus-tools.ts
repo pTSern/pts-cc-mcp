@@ -2,20 +2,34 @@ import { ToolDefinition, ToolResponse, ToolExecutor } from '../types';
 import * as path from 'path';
 import * as fs from 'fs';
 import { isNexusAvailable } from '../utils/nexus-checker';
+import { PrefabAstParser } from '../utils/prefab-ast-parser';
 
 export class NexusTools implements ToolExecutor {
     getTools(): ToolDefinition[] {
         return [
             {
                 name: 'nexus_manage',
-                description: 'PROJECT ARCHITECTURE & TREE GRAPHS: Query scene node flow trees with workflows/components, function execution call pipelines, and pEngine.Json/pTSAsset event dependency networks in ASCII or JSON format. Ideal for LLM reasoning.',
+                description: 'PROJECT ARCHITECTURE & TREE GRAPHS: Query scene node flow trees with workflows/components, function execution call pipelines, pEngine.Json/pTSAsset event dependency networks, and parallel multi-prefab batch property extraction.',
                 inputSchema: {
                     type: 'object',
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['get_tree_graph', 'list_scenes', 'list_workflows', 'scan_network', 'query_event', 'generate_html'],
-                            description: 'Nexus action opcode'
+                            enum: ['get_tree_graph', 'list_scenes', 'list_workflows', 'scan_network', 'query_event', 'generate_html', 'batch_query'],
+                            description: 'Nexus action opcode: "batch_query" = parallel property extraction across multiple prefabs'
+                        },
+                        folder: { type: 'string', description: 'Folder path for batch_query (e.g. "db://assets/game/level/fabs")' },
+                        pattern: { type: 'string', default: 'level_*.prefab', description: 'Filename wildcard filter for batch_query' },
+                        queries: {
+                            type: 'array',
+                            description: 'Array of { targetPath, extract } queries to run on each prefab',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    targetPath: { type: 'string', description: 'Subpath in prefab node tree' },
+                                    extract: { type: 'array', items: { type: 'string' }, description: 'Properties to extract (e.g. ["position", "children_names", "Box2D_Spawner.options"])' }
+                                }
+                            }
                         },
                         type: {
                             type: 'string',
@@ -137,6 +151,10 @@ export class NexusTools implements ToolExecutor {
     }
 
     async execute(toolName: string, args: any): Promise<ToolResponse> {
+        if (args?.action === 'batch_query' || toolName === 'nexus_batch_query') {
+            return await this.handleBatchQuery(args);
+        }
+
         if (!isNexusAvailable()) {
             return {
                 success: false,
@@ -157,6 +175,8 @@ export class NexusTools implements ToolExecutor {
                 return this.queryEvent(args?.eventNameOrUuid || args?.target);
             case 'nexus_generate_html':
                 return this.generateHtml(args?.outputPath);
+            case 'nexus_batch_query':
+                return this.handleBatchQuery(args);
             default:
                 throw new Error(`Unknown nexus tool: ${toolName}`);
         }
@@ -165,6 +185,8 @@ export class NexusTools implements ToolExecutor {
     private async handleNexusManage(args: any): Promise<ToolResponse> {
         const action = args?.action;
         switch (action) {
+            case 'batch_query':
+                return this.handleBatchQuery(args);
             case 'get_tree_graph':
                 return this.getTreeGraph(args);
             case 'list_scenes':
@@ -182,6 +204,106 @@ export class NexusTools implements ToolExecutor {
                     return this.getTreeGraph(args);
                 }
                 return { success: false, error: `Unknown nexus action: ${action}` };
+        }
+    }
+
+    public async handleBatchQuery(args: {
+        folder?: string;
+        pattern?: string;
+        queries?: Array<{
+            targetPath?: string;
+            extract?: string[];
+        }>;
+    }): Promise<ToolResponse> {
+        try {
+            const projectRoot = this.getProjectPath();
+            const rawFolder = args?.folder || 'db://assets';
+            const folderPath = rawFolder.startsWith('db://')
+                ? path.join(projectRoot, rawFolder.replace(/^db:\/\//, ''))
+                : (path.isAbsolute(rawFolder) ? rawFolder : path.join(projectRoot, rawFolder));
+
+            if (!fs.existsSync(folderPath)) {
+                return { success: false, error: `Folder not found: ${rawFolder}` };
+            }
+
+            const patternStr = args?.pattern || '*.prefab';
+            const regex = new RegExp('^' + patternStr.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$', 'i');
+
+            const allFiles = fs.readdirSync(folderPath);
+            const matchedFiles = allFiles
+                .filter(f => regex.test(f) && f.endsWith('.prefab'))
+                .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+            if (matchedFiles.length === 0) {
+                return { success: false, error: `No prefab files matching "${patternStr}" found in ${rawFolder}` };
+            }
+
+            const queries = Array.isArray(args?.queries) && args.queries.length > 0
+                ? args.queries
+                : [{ targetPath: '', extract: ['position', 'children_names', 'components'] }];
+
+            const results: Record<string, any> = {};
+
+            await Promise.all(matchedFiles.map(async (filename) => {
+                const fullPath = path.join(folderPath, filename);
+                try {
+                    const parser = await PrefabAstParser.loadFromFile(fullPath);
+                    const fileData: Record<string, any> = {};
+
+                    for (const q of queries) {
+                        const targetPath = q.targetPath || '';
+                        const targetNode = parser.findNodeByPath(targetPath);
+                        if (!targetNode) continue;
+
+                        const extractList = Array.isArray(q.extract) && q.extract.length > 0
+                            ? q.extract
+                            : ['position', 'children_names'];
+
+                        for (const item of extractList) {
+                            if (item === '_lpos' || item === 'position' || item === 'pos') {
+                                fileData[targetPath ? `${path.basename(targetPath)}_pos` : 'pos'] = targetNode.node._lpos || { x: 0, y: 0, z: 0 };
+                            } else if (item === '_lscale' || item === 'scale') {
+                                fileData[targetPath ? `${path.basename(targetPath)}_scale` : 'scale'] = targetNode.node._lscale || { x: 1, y: 1, z: 1 };
+                            } else if (item === 'children_names' || item === 'children') {
+                                const children = (targetNode.node._children || []).map((ref: any) => {
+                                    const child = parser.getItem(ref.__id__);
+                                    return child?._name || `id_${ref.__id__}`;
+                                });
+                                fileData[targetPath ? `${path.basename(targetPath)}_children` : 'children'] = children;
+                            } else if (item === 'components') {
+                                const comps = parser.getComponents(targetNode.id).map(c => c.className || c.type);
+                                fileData[targetPath ? `${path.basename(targetPath)}_components` : 'components'] = comps;
+                            } else if (item.includes('.')) {
+                                const [compName, propName] = item.split('.');
+                                const compItem = parser.findComponent(targetNode.id, compName);
+                                if (compItem && compItem.comp && compItem.comp[propName] !== undefined) {
+                                    fileData[item] = parser.resolveValueWithPointers(compItem.comp[propName]);
+                                }
+                            } else if (targetNode.node[item] !== undefined) {
+                                fileData[item] = parser.resolveValueWithPointers(targetNode.node[item]);
+                            }
+                        }
+                    }
+
+                    results[filename] = fileData;
+                } catch (e: any) {
+                    results[filename] = { error: e?.message || 'Failed to parse' };
+                }
+            }));
+
+            return {
+                success: true,
+                message: `Batch queried ${matchedFiles.length} prefabs in ${rawFolder}`,
+                data: {
+                    totalScanned: matchedFiles.length,
+                    results
+                }
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: `Batch query failed: ${error?.message || error}`
+            };
         }
     }
 

@@ -71,6 +71,13 @@ export class MCPServer {
     private initializeTools(): void {
         try {
             console.log('[MCPServer] Initializing tools...');
+            // Invalidate full pts-cc-mcp cache so all sub-tools, AST parsers, and utilities reload cleanly
+            Object.keys(require.cache).forEach(cacheKey => {
+                if (cacheKey.includes('pts-cc-mcp')) {
+                    delete require.cache[cacheKey];
+                }
+            });
+
             const toolModules: Record<string, string> = {
                 scene: './tools/scene-tools',
                 node: './tools/node-tools',

@@ -33,20 +33,20 @@ Before performing any manual file editing on \`.scene\` or \`.prefab\` assets:
 | **\`scene_manage\`** | \`action: "get_current" \\| "hierarchy" \\| "inspect" \\| "open" \\| "save" \\| "create"\`, \`includeComponents: true\` | Scene lifecycle, full tree inspection, and scene scripts. |
 | **\`node_manage\`** | \`action: "query" \\| "create" \\| "delete" \\| "duplicate" \\| "transform" \\| "reparent"\`, \`nodeUuid\`, \`position\`, \`size\`, \`queryType\` | Universal node search, creation, transform, and hierarchy manipulation. |
 | **\`component_manage\`** | \`action: "add" \\| "remove" \\| "get" \\| "update" \\| "bind_event" \\| "query_class_info"\`, \`nodeUuid\`, \`componentType\`, \`properties\` | Add/remove components, deep property updates with auto-save, click binding, and @ccclass reflection. |
-| **\`prefab_manage\`** | \`action: "list" \\| "info" \\| "validate" \\| "enter" \\| "exit" \\| "save" \\| "instantiate" \\| "atomic_edit"\`, \`prefabPath\`, \`nodeUuid\` | Complete prefab lifecycle, non-destructive editing sessions, and atomic batch edits. |
+| **\`prefab_manage\`** | \`action: "list" \\| "info" \\| "validate" \\| "enter" \\| "exit" \\| "save" \\| "instantiate" \\| "atomic_edit" \\| "diff" \\| "inspect_headless" \\| "batch_edit_headless"\`, \`prefabPath\`, \`nodeUuid\` | Complete prefab lifecycle, non-destructive editing sessions, atomic batch edits, headless diff, offline inspection, and batch headless edits. |
 | **\`ui_builder\`** | \`action: "build_tree" \\| "create_dialog" \\| "create_button" \\| "create_list"\`, \`tree\`, \`parent\` | Declarative 1-shot UI generation with auto-UITransform, Widget constraints, and Layouts. |
 | **\`anim_manage\`** | \`action: "clip_inspect" \\| "clip_create" \\| "clip_add_track" \\| "clip_add_keyframe" \\| "clip_apply_preset" \\| "slice_fbx" \\| "graph_inspect"\`, \`animPath\`, \`property\`, \`time\`, \`value\` | Timeline AnimationClip editing, property curves, easing modes, animation events, presets, FBX slicing, and AnimGraph state machines. |
-| **\`asset_manage\`** | \`action: "query" \\| "resolve" \\| "import" \\| "delete" \\| "dependencies"\`, \`folder\`, \`assetPath\`, \`assets\` | Asset discovery, dependency inspection, and smart sub-asset resolution (\`@spriteFrame\`, \`@texture\`). |
+| **\`asset_manage\`** | \`action: "query" \\| "resolve" \\| "import" \\| "delete" \\| "dependencies" \\| "trace_references"\`, \`folder\`, \`assetPath\`, \`target\` | Asset discovery, dependency inspection, smart sub-asset resolution (\`@spriteFrame\`, \`@texture\`), and bidirectional reference tracing. |
 | **\`knowledge_query\`** | \`action: "query_component" \\| "query_rules" \\| "query_layout_patterns" \\| "get_mcp_guide" \\| "list_topics"\`, \`className\`, \`topic\` | Offline architecture reference for components, coordinates, rules, and live MCP documentation. |
 | **\`validation_manage\`**| \`action: "check_scene" \\| "check_assets" \\| "check_viewport" \\| "capture_snapshot" \\| "diff_snapshot" \\| "list_snapshots" \\| "restore_snapshot"\`, \`threshold\`, \`tag\`, \`snapshotId\` | Automated audit for missing UITransforms, corrupt assets, out-of-bounds nodes, and visual snapshot regression diffing. |
 | **\`batch_execute\`** | \`operations: [{ tool, args }]\`, \`autoSave: true\` | In-process atomic batch execution running multiple operations in a single IPC transaction. |
 | **\`project_manage\`** | \`action: "get_info" \\| "build" \\| "run" \\| "compile_watch"\` | Build settings, preview server control, and TypeScript compilation watcher. |
 | **\`scene_view_control\`**| \`action: "camera_focus" \\| "camera_view" \\| "grid_toggle" \\| "gizmo_mode"\`, \`nodeUuid\`, \`viewMode\` | Viewport camera manipulation and editor overlays. |
 | **\`spine_manage\`** | \`action: "setup_rig" \\| "query_animations" \\| "set_animation"\`, \`nodeUuid\`, \`spineAssetPath\`, \`defaultAnimation\` | Rapid one-call Spine skeleton or FastSpine rig setup. |
-| **\`debug_manage\`** | \`action: "get_logs" \\| "search_logs" \\| "get_stats"\` | Editor console monitoring and performance telemetry. |
+| **\`debug_manage\`** | \`action: "get_logs" \\| "search_logs" \\| "get_stats" \\| "profiler_snapshot"\` | Editor console monitoring, performance telemetry, and live runtime FPS/draw call profiler snapshots. |
 | **\`preferences_manage\`** | \`action: "open_panel" \\| "get_config" \\| "set_config" \\| "reset_config"\`, \`category\`, \`path\`, \`value\` | Editor preferences and configuration management. |
 | **\`broadcast_manage\`** | \`action: "subscribe" \\| "emit" \\| "history" \\| "clear"\`, \`channel\`, \`data\` | Editor/Scene broadcast event bus for pub/sub telemetry. |
-| **\`nexus_manage\`** | \`action: "get_tree_graph" \\| "list_scenes" \\| "list_workflows" \\| "scan_network" \\| "query_event" \\| "generate_html"\`, \`type\`, \`target\`, \`format: "ascii" \\| "json" \\| "both"\` | Tree graph query engine for scene node hierarchies with workflows, function execution pipelines, and event dependency networks. |
+| **\`nexus_manage\`** | \`action: "get_tree_graph" \\| "list_scenes" \\| "list_workflows" \\| "scan_network" \\| "query_event" \\| "generate_html" \\| "batch_query"\`, \`type\`, \`target\`, \`folder\`, \`pattern\` | Tree graph query engine for scene node hierarchies with workflows, function execution pipelines, and mass multi-prefab property queries. |
 | **\`browser_manage\`** | \`action: "status" \\| "launch" \\| "navigate" \\| "tap" \\| "swipe" \\| "eval" \\| "screenshot" \\| "get_logs" \\| "close"\`, \`url\`, \`x\`, \`y\`, \`code\` | End-to-end automated browser game testing with Playwright Chromium: canvas taps, drags, JS eval, screenshots, and logs. |
 
 ---
@@ -117,6 +117,14 @@ Before performing any manual file editing on \`.scene\` or \`.prefab\` assets:
 * Capture screenshot for visual inspection: \`browser_manage(action="screenshot")\`.
 * Check runtime logs & console errors: \`browser_manage(action="get_logs")\`.
 * Close browser session: \`browser_manage(action="close")\`.
+
+#### J. Headless Prefab Manipulation, Asset Tracing & Live Profiler
+* Compare two prefabs side-by-side without editor canvas: \`prefab_manage(action="diff", sourcePrefab="db://assets/...", targetPrefab="db://assets/...")\`.
+* Deep offline inspect of node hierarchy & components: \`prefab_manage(action="inspect_headless", prefabPath="db://assets/...", resolveReferences=true)\`.
+* Batch extract properties across multi-prefabs in parallel: \`nexus_manage(action="batch_query", folder="db://assets/...", pattern="*.prefab", queries=[{ extract: ["position", "components"] }])\`.
+* Bidirectional reference tracer: \`asset_manage(action="trace_references", target="db://assets/...")\`.
+* Multi-prefab headless modification: \`prefab_manage(action="batch_edit_headless", files=["db://assets/..."], operations=[...], dryRun=true)\`.
+* Live game profiler telemetry: \`debug_manage(action="profiler_snapshot", samples=3)\`.
 `;
 }
 

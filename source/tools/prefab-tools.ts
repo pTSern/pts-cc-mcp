@@ -1,7 +1,9 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, PrefabInfo } from '../types';
 import { readSettings } from '../settings';
+import { PrefabHeadlessTools } from './prefab-headless-tools';
 
 export class PrefabTools implements ToolExecutor {
+    private headlessTools: PrefabHeadlessTools = new PrefabHeadlessTools();
     private static activeSession: {
         previousSceneUrl: string | null;
         previousSceneUuid: string | null;
@@ -156,9 +158,30 @@ export class PrefabTools implements ToolExecutor {
                 return await this.handlePrefabInstance(args);
             case 'prefab_edit':
                 return await this.handlePrefabEdit(args);
+            case 'prefab_diff':
+            case 'diff':
+                return await this.headlessTools.diff(args);
+            case 'prefab_inspect_headless':
+            case 'inspect_headless':
+                return await this.headlessTools.inspectHeadless(args);
+            case 'prefab_batch_edit_headless':
+            case 'batch_edit_headless':
+                return await this.headlessTools.batchEditHeadless(args);
             default:
                 throw new Error(`Unknown tool: ${toolName}`);
         }
+    }
+
+    public async diff(args: any): Promise<ToolResponse> {
+        return await this.headlessTools.diff(args);
+    }
+
+    public async inspectHeadless(args: any): Promise<ToolResponse> {
+        return await this.headlessTools.inspectHeadless(args);
+    }
+
+    public async batchEditHeadless(args: any): Promise<ToolResponse> {
+        return await this.headlessTools.batchEditHeadless(args);
     }
 
     private async getPrefabList(folder: string = 'db://assets'): Promise<ToolResponse> {

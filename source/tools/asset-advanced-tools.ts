@@ -2,6 +2,7 @@ import { ToolDefinition, ToolResponse, ToolExecutor, AssetInfo } from '../types'
 import * as fs from 'fs';
 import * as path from 'path';
 import { AssetResolver } from '../utils/asset-resolver';
+import { compressUuid, decompressUuid } from '../utils/uuid-utils';
 
 export class AssetAdvancedTools implements ToolExecutor {
     getTools(): ToolDefinition[] {
@@ -325,6 +326,8 @@ export class AssetAdvancedTools implements ToolExecutor {
                 return await this.saveAssetMeta(args.urlOrUUID, args.content);
             case 'generate_url':
                 return await this.generateAvailableUrl(args?.url || 'db://assets/new_asset');
+            case 'trace_references':
+                return await this.traceReferences(args);
             default:
                 return { success: false, error: `Unknown asset manage action: ${action}` };
         }
@@ -334,6 +337,8 @@ export class AssetAdvancedTools implements ToolExecutor {
         const { action } = args;
         
         switch (action) {
+            case 'trace_references':
+                return await this.traceReferences(args);
             // case 'validate_refs': // COMMENTED OUT - Requires complex project analysis
             //     return await this.validateAssetReferences(args.folder);
             case 'dependencies':
@@ -1167,6 +1172,175 @@ export class AssetAdvancedTools implements ToolExecutor {
             return {
                 success: false,
                 error: `Failed to resolve asset: ${err.message || err}`
+            };
+        }
+    }
+
+    private getProjectRoot(): string {
+        if (typeof Editor !== 'undefined' && (Editor as any)?.Project?.path) {
+            return (Editor as any).Project.path;
+        }
+        return path.resolve(__dirname, '../../../..');
+    }
+
+    public async traceReferences(args: {
+        target?: string;
+        deep?: boolean;
+        detectBroken?: boolean;
+    }): Promise<ToolResponse> {
+        try {
+            const rawTarget = args?.target;
+            if (!rawTarget) {
+                return { success: false, error: 'trace_references requires "target" parameter (UUID or asset path)' };
+            }
+
+            const projectRoot = this.getProjectRoot();
+            let targetUuid = '';
+            let targetPath = '';
+
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (uuidRegex.test(rawTarget)) {
+                targetUuid = rawTarget.toLowerCase();
+            } else if (rawTarget.length === 22 || rawTarget.length === 23) {
+                targetUuid = decompressUuid(rawTarget).toLowerCase();
+            } else {
+                const cleanRel = rawTarget.replace(/^db:\/\//, '');
+                const withMeta = cleanRel.endsWith('.meta') ? cleanRel : cleanRel + '.meta';
+                const diskMeta = path.isAbsolute(withMeta) ? withMeta : path.join(projectRoot, withMeta);
+                if (fs.existsSync(diskMeta)) {
+                    try {
+                        const metaJson = JSON.parse(fs.readFileSync(diskMeta, 'utf8'));
+                        targetUuid = (metaJson.uuid || '').toLowerCase();
+                        targetPath = rawTarget.startsWith('db://') ? rawTarget : `db://${cleanRel.replace(/\\/g, '/')}`;
+                    } catch {}
+                }
+            }
+
+            if (!targetUuid) {
+                return { success: false, error: `Could not resolve target asset or UUID: ${rawTarget}` };
+            }
+
+            const targetCid = compressUuid(targetUuid);
+            const assetsDir = path.join(projectRoot, 'assets');
+            const allKnownUuids = new Set<string>();
+            const inboundReferences: Array<{ file: string; field: string }> = [];
+            const outboundReferences: Array<{ uuid: string }> = [];
+            const brokenReferences: Array<{ uuid: string }> = [];
+
+            const scanMetas = (dir: string) => {
+                try {
+                    const entries = fs.readdirSync(dir, { withFileTypes: true });
+                    for (const entry of entries) {
+                        const full = path.join(dir, entry.name);
+                        if (entry.isDirectory()) {
+                            if (entry.name !== 'node_modules' && entry.name !== '.git') {
+                                scanMetas(full);
+                            }
+                        } else if (entry.isFile() && entry.name.endsWith('.meta')) {
+                            try {
+                                const content = fs.readFileSync(full, 'utf8');
+                                const meta = JSON.parse(content);
+                                if (meta.uuid) {
+                                    const u = meta.uuid.toLowerCase();
+                                    allKnownUuids.add(u);
+                                    if (u === targetUuid && !targetPath) {
+                                        targetPath = full.slice(0, -5);
+                                    }
+                                }
+                            } catch {}
+                        }
+                    }
+                } catch {}
+            };
+            scanMetas(assetsDir);
+
+            const extDir = path.join(projectRoot, 'extensions');
+            if (fs.existsSync(extDir)) scanMetas(extDir);
+
+            const scannableExtensions = new Set(['.pts', '.prefab', '.scene', '.json', '.anim', '.ts']);
+            const scanContentFiles = (dir: string) => {
+                try {
+                    const entries = fs.readdirSync(dir, { withFileTypes: true });
+                    for (const entry of entries) {
+                        const full = path.join(dir, entry.name);
+                        if (entry.isDirectory()) {
+                            if (entry.name !== 'node_modules' && entry.name !== '.git' && entry.name !== 'temp') {
+                                scanContentFiles(full);
+                            }
+                        } else if (entry.isFile()) {
+                            const ext = path.extname(entry.name).toLowerCase();
+                            if (scannableExtensions.has(ext)) {
+                                try {
+                                    const text = fs.readFileSync(full, 'utf8');
+                                    const hasUuid = text.toLowerCase().includes(targetUuid);
+                                    const hasCid = targetCid && text.includes(targetCid);
+                                    if (hasUuid || hasCid) {
+                                        const rel = path.relative(projectRoot, full).replace(/\\/g, '/');
+                                        let field = 'content';
+                                        if (text.includes('"conditions"')) field = 'conditions';
+                                        else if (text.includes('"_spriteFrame"')) field = '_spriteFrame';
+                                        else if (text.includes('"__type__"')) field = 'component_type';
+                                        inboundReferences.push({
+                                            file: `db://${rel}`,
+                                            field
+                                        });
+                                    }
+                                } catch {}
+                            }
+                        }
+                    }
+                } catch {}
+            };
+            scanContentFiles(assetsDir);
+
+            const resolvedTargetFile = targetPath
+                ? (path.isAbsolute(targetPath) ? targetPath : path.join(projectRoot, targetPath.replace(/^db:\/\//, '')))
+                : '';
+
+            if (resolvedTargetFile && fs.existsSync(resolvedTargetFile)) {
+                try {
+                    const targetContent = fs.readFileSync(resolvedTargetFile, 'utf8');
+                    const uuidMatches = targetContent.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) || [];
+                    const uniqueOutbound = new Set<string>();
+
+                    for (const m of uuidMatches) {
+                        const u = m.toLowerCase();
+                        if (u !== targetUuid && !uniqueOutbound.has(u)) {
+                            uniqueOutbound.add(u);
+                            outboundReferences.push({ uuid: u });
+                            if (args?.detectBroken !== false && !allKnownUuids.has(u)) {
+                                brokenReferences.push({ uuid: u });
+                            }
+                        }
+                    }
+                } catch {}
+            }
+
+            let cleanRel = targetPath || rawTarget;
+            if (cleanRel.startsWith('db://')) {
+                // already db:// format
+            } else if (path.isAbsolute(cleanRel)) {
+                cleanRel = `db://${path.relative(projectRoot, cleanRel).replace(/\\/g, '/')}`;
+            } else {
+                cleanRel = `db://${cleanRel.replace(/\\/g, '/')}`;
+            }
+
+            return {
+                success: true,
+                message: `Traced references for ${targetUuid}: ${inboundReferences.length} inbound, ${outboundReferences.length} outbound, ${brokenReferences.length} broken`,
+                data: {
+                    uuid: targetUuid,
+                    cid: targetCid,
+                    assetPath: cleanRel,
+                    inboundReferences,
+                    outboundReferences,
+                    brokenReferences
+                }
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: `Trace references failed: ${error?.message || error}`
             };
         }
     }
