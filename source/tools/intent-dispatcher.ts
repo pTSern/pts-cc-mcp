@@ -277,8 +277,8 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['query', 'resolve', 'create', 'delete', 'import', 'dependencies', 'uuid_to_url', 'url_to_uuid', 'save_meta', 'trace_references', 'repair_broken_references'],
-                            description: 'Asset action opcode: "trace_references" = bidirectional reference graph | "repair_broken_references" = batch replace broken UUIDs/CIDs across assets'
+                            enum: ['query', 'resolve', 'create', 'delete', 'import', 'dependencies', 'uuid_to_url', 'url_to_uuid', 'save_meta', 'trace_references', 'repair_broken_references', 'reimport', 'refresh'],
+                            description: 'Asset action opcode: "trace_references" = bidirectional reference graph | "repair_broken_references" = batch replace broken UUIDs/CIDs across assets | "reimport" = trigger AssetDB reimport | "refresh" = refresh folder'
                         },
                         target: { type: 'string', description: 'Target UUID or asset path for trace_references' },
                         targetPath: { type: 'string', description: 'Folder or file path for repair_broken_references (default: "db://assets")' },
@@ -903,8 +903,8 @@ export class IntentDispatcher {
                 if (action === 'query') {
                     return await assetTools.handleAssetQuery(args);
                 }
-                if (action === 'create') {
-                    return await assetTools.handleAssetOperations({ action: 'create', ...args });
+                if (action === 'create' || action === 'reimport') {
+                    return await assetTools.handleAssetOperations({ action, url: args?.url || args?.assetPath, ...args });
                 }
                 if (action === 'delete' || action === 'import' || action === 'save_meta' || action === 'trace_references' || action === 'repair_broken_references') {
                     return await assetTools.handleAssetManage(args);
