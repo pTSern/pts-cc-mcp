@@ -44,11 +44,12 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['get_current', 'get_list', 'open', 'save', 'save_as', 'create', 'close', 'hierarchy', 'inspect', 'stats', 'execute_script', 'execute_component_method', 'tree_graph', 'flow'],
-                            description: 'Scene action opcode'
+                            enum: ['get_current', 'get_list', 'open', 'save', 'save_as', 'create', 'close', 'hierarchy', 'inspect', 'stats', 'execute_script', 'execute_component_method', 'tree_graph', 'flow', 'inspect_headless', 'edit_headless', 'batch_edit_headless'],
+                            description: 'Scene action opcode: includes editor viewport actions and "inspect_headless" / "edit_headless" for direct fs AST modifications'
                         },
                         format: { type: 'string', enum: ['both', 'ascii', 'json'], default: 'both', description: 'Result format for tree_graph/hierarchy ("ascii", "json", "both")' },
                         scenePath: { type: 'string', description: 'Scene asset path (e.g. "db://assets/scenes/Game.scene")' },
+                        targetFile: { type: 'string', description: 'Target .scene or .prefab file path for headless operations' },
                         sceneName: { type: 'string', description: 'New scene name (for create action)' },
                         savePath: { type: 'string', description: 'Save location path (e.g. "db://assets/scenes/NewScene.scene")' },
                         path: { type: 'string', description: 'Destination path (for save_as action)' },
@@ -58,7 +59,10 @@ export class IntentDispatcher {
                         name: { type: 'string', description: 'Script target extension or method name' },
                         method: { type: 'string', description: 'Script method name to execute' },
                         uuid: { type: 'string', description: 'Component or node UUID' },
-                        args: { type: 'array', default: [], description: 'Arguments array for script or method' }
+                        args: { type: 'array', default: [], description: 'Arguments array for script or method' },
+                        operations: { type: 'array', description: 'Chain operations for edit_headless action' },
+                        chain: { type: 'array', description: 'Chain operations for edit_headless action' },
+                        dryRun: { type: 'boolean', default: false, description: 'Simulate headless modifications without saving to disk' }
                     },
                     required: ['action']
                 }
@@ -73,16 +77,20 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['query', 'create', 'delete', 'duplicate', 'transform', 'reparent', 'set_active', 'clipboard'],
-                            description: 'Node action opcode'
+                            enum: ['query', 'create', 'delete', 'duplicate', 'transform', 'reparent', 'set_active', 'clipboard', 'create_headless', 'delete_headless', 'duplicate_headless', 'transform_headless', 'reparent_headless', 'set_active_headless', 'query_headless', 'edit_headless'],
+                            description: 'Node action opcode: standard editor actions or headless actions using targetFile'
                         },
+                        targetFile: { type: 'string', description: 'Target .scene or .prefab file path for headless direct fs editing' },
                         nodeUuid: { type: 'string', description: 'Target node UUID (also accepts uuid)' },
                         uuid: { type: 'string', description: 'Target node UUID' },
+                        nodePath: { type: 'string', description: 'Target node path in hierarchy (e.g. "Canvas/Player")' },
                         queryType: { type: 'string', enum: ['find_by_name', 'find_by_path', 'get_children', 'get_parent', 'dump_tree', 'list_all'], default: 'find_by_name' },
                         name: { type: 'string', description: 'Node name or search pattern' },
                         path: { type: 'string', description: 'Node path query (e.g. "Canvas/Panel/Button")' },
                         parentUuid: { type: 'string', description: 'Parent node UUID for create or reparent' },
+                        parentPath: { type: 'string', description: 'Parent node path for create or reparent' },
                         newParentUuid: { type: 'string', description: 'Destination parent UUID for reparent' },
+                        newParentPath: { type: 'string', description: 'Destination parent path for reparent' },
                         position: {
                             type: 'object',
                             properties: { x: { type: 'number' }, y: { type: 'number' }, z: { type: 'number' } },
@@ -110,7 +118,10 @@ export class IntentDispatcher {
                         },
                         active: { type: 'boolean', description: 'Node active state' },
                         is2D: { type: 'boolean', default: true, description: 'Whether node is 2D UI element' },
-                        clipboardAction: { type: 'string', enum: ['copy', 'cut', 'paste'], description: 'Clipboard operation' }
+                        clipboardAction: { type: 'string', enum: ['copy', 'cut', 'paste'], description: 'Clipboard operation' },
+                        operations: { type: 'array', description: 'Chain operations array for edit_headless action' },
+                        chain: { type: 'array', description: 'Chain operations array for edit_headless action' },
+                        dryRun: { type: 'boolean', default: false, description: 'Simulate headless modifications without saving to disk' }
                     },
                     required: ['action']
                 }
@@ -125,15 +136,18 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['add', 'remove', 'get', 'set_property', 'update', 'bind_event', 'list_types', 'query_class_info'],
-                            description: 'Component action opcode'
+                            enum: ['add', 'remove', 'get', 'set_property', 'update', 'bind_event', 'list_types', 'query_class_info', 'add_headless', 'remove_headless', 'update_headless', 'get_headless', 'edit_headless'],
+                            description: 'Component action opcode: standard editor actions or headless actions using targetFile'
                         },
+                        targetFile: { type: 'string', description: 'Target .scene or .prefab file path for headless direct fs editing' },
                         nodeUuid: { type: 'string', description: 'Target node UUID' },
-                        componentType: { type: 'string', description: 'Component class name (e.g. "cc.Sprite", "cc.Label", "cc.Button", "cc.Widget", "cc.Layout", "cc.UITransform")' },
+                        nodePath: { type: 'string', description: 'Target node path in hierarchy (e.g. "Canvas/Player")' },
+                        componentType: { type: 'string', description: 'Component class name (e.g. "cc.Sprite", "cc.Label", "cc.Button", "cc.Widget", "cc.Layout", "cc.UITransform") or custom @ccclass name' },
                         componentIndex: { type: 'number', description: 'Index if multiple components of same type exist' },
                         property: { type: 'string', description: 'Property path (supports dot-notation, e.g. "spriteFrame", "contentSize.width")' },
                         propertyType: { type: 'string', description: 'Property type: "string"|"number"|"boolean"|"color"|"vec2"|"vec3"|"size"|"spriteFrame"|"asset"' },
                         value: { description: 'Value to assign to property' },
+                        valueMode: { type: 'string', enum: ['self_node'], description: 'Set to "self_node" to link property to the node itself' },
                         properties: { type: 'object', description: 'Deep property map for update action' },
                         targetNodeUuid: { type: 'string', description: 'Target node UUID for click event binding' },
                         targetComponent: { type: 'string', description: 'Target component name for click event handler' },
@@ -141,7 +155,10 @@ export class IntentDispatcher {
                         customEventData: { type: 'string', description: 'Custom event data string' },
                         className: { type: 'string', description: 'Class name to inspect for query_class_info' },
                         category: { type: 'string', description: 'Component category filter for list_types' },
-                        autoSave: { type: 'boolean', default: true, description: 'Automatically save scene after update' }
+                        autoSave: { type: 'boolean', default: true, description: 'Automatically save scene after update' },
+                        operations: { type: 'array', description: 'Chain operations array for edit_headless action' },
+                        chain: { type: 'array', description: 'Chain operations array for edit_headless action' },
+                        dryRun: { type: 'boolean', default: false, description: 'Simulate headless modifications without saving to disk' }
                     },
                     required: ['action']
                 }
@@ -156,9 +173,10 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['list', 'info', 'validate', 'create', 'delete', 'instantiate', 'unlink', 'apply', 'revert', 'enter', 'exit', 'save', 'atomic_edit', 'diff', 'inspect_headless', 'batch_edit_headless'],
-                            description: 'Prefab action opcode: "diff" = side-by-side headless compare | "inspect_headless" = offline tree inspection | "batch_edit_headless" = programmatic multi-prefab edits'
+                            enum: ['list', 'info', 'validate', 'create', 'delete', 'instantiate', 'unlink', 'apply', 'revert', 'enter', 'exit', 'save', 'atomic_edit', 'diff', 'inspect_headless', 'batch_edit_headless', 'edit_headless'],
+                            description: 'Prefab action opcode: "diff" = side-by-side headless compare | "inspect_headless" = offline tree inspection | "batch_edit_headless" / "edit_headless" = programmatic multi-prefab/scene edits'
                         },
+                        targetFile: { type: 'string', description: 'Target .prefab or .scene file path for headless operations' },
                         prefabPath: { type: 'string', description: 'Prefab asset path (e.g. "db://assets/prefabs/Hero.prefab")' },
                         sourcePrefab: { type: 'string', description: 'Source prefab path for diff action' },
                         targetPrefab: { type: 'string', description: 'Target prefab path for diff action' },
@@ -182,6 +200,10 @@ export class IntentDispatcher {
                         operations: {
                             type: 'array',
                             description: 'Batch operations array for atomic_edit or batch_edit_headless action'
+                        },
+                        chain: {
+                            type: 'array',
+                            description: 'Chain operations array for edit_headless action'
                         }
                     },
                     required: ['action']
@@ -197,9 +219,10 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['build_tree', 'create_dialog', 'create_button', 'create_list', 'apply_widget', 'apply_layout'],
-                            description: 'UI Builder action opcode'
+                            enum: ['build_tree', 'create_dialog', 'create_button', 'create_list', 'apply_widget', 'apply_layout', 'build_tree_headless'],
+                            description: 'UI Builder action opcode: editor canvas building or build_tree_headless via targetFile'
                         },
+                        targetFile: { type: 'string', description: 'Target .prefab or .scene file path for headless direct UI tree creation' },
                         parent: { type: 'string', description: 'Parent node UUID, path, or "Canvas"' },
                         tree: { type: 'object', description: 'Declarative JSON tree node definition' },
                         title: { type: 'string', description: 'Dialog header title' },
@@ -214,7 +237,8 @@ export class IntentDispatcher {
                         nodeUuid: { type: 'string', description: 'Target node UUID' },
                         alignFlags: { type: 'number', description: 'Widget align flags (15: Full Stretch)' },
                         layoutType: { type: 'string', enum: ['NONE', 'HORIZONTAL', 'VERTICAL', 'GRID'] },
-                        autoSave: { type: 'boolean', default: true }
+                        autoSave: { type: 'boolean', default: true },
+                        dryRun: { type: 'boolean', default: false, description: 'Simulate headless UI building without saving to disk' }
                     },
                     required: ['action']
                 }
@@ -368,7 +392,9 @@ export class IntentDispatcher {
                             }
                         },
                         stopOnError: { type: 'boolean', default: true, description: 'Halt sequence on error' },
-                        autoSave: { type: 'boolean', default: true, description: 'Automatically save scene after batch completes' }
+                        autoSave: { type: 'boolean', default: true, description: 'Automatically save scene after batch completes' },
+                        targetFile: { type: 'string', description: 'Target .scene or .prefab file to execute operations headlessly via direct fs' },
+                        dryRun: { type: 'boolean', default: false, description: 'Simulate headless batch operations without writing to disk' }
                     },
                     required: ['operations']
                 }
@@ -738,6 +764,12 @@ export class IntentDispatcher {
                 if (action === 'inspect') {
                     return await sceneTools.inspectScene(args);
                 }
+                if (action === 'inspect_headless') {
+                    return await sceneTools.execute('scene_inspect_headless', args);
+                }
+                if (action === 'edit_headless' || action === 'batch_edit_headless') {
+                    return await sceneTools.execute('scene_edit_headless', args);
+                }
                 if (action === 'stats') {
                     return await sceneTools.handleQuerySystem({ action: 'get_stats' });
                 }
@@ -750,6 +782,11 @@ export class IntentDispatcher {
             case 'node_manage': {
                 const nodeTools = this.tools['node'];
                 if (!nodeTools) throw new Error('Node tools not initialized');
+
+                const hasTargetFile = Boolean(args?.targetFile || args?.scenePath || args?.prefabPath || args?.file);
+                if (hasTargetFile || action?.endsWith('_headless') || action === 'edit_headless') {
+                    return await nodeTools.execute('node_manage', args);
+                }
 
                 const targetUuid = args?.nodeUuid || args?.uuid;
 
@@ -809,6 +846,11 @@ export class IntentDispatcher {
                 const compTools = this.tools['component'];
                 if (!compTools) throw new Error('Component tools not initialized');
 
+                const hasTargetFile = Boolean(args?.targetFile || args?.scenePath || args?.prefabPath || args?.file);
+                if (hasTargetFile || action?.endsWith('_headless') || action === 'edit_headless') {
+                    return await compTools.execute('component_manage', args);
+                }
+
                 if (action === 'add' || action === 'remove') {
                     return await compTools.handleComponentManage({
                         action,
@@ -850,8 +892,9 @@ export class IntentDispatcher {
                 if (action === 'inspect_headless') {
                     return await prefabTools.inspectHeadless(args);
                 }
-                if (action === 'batch_edit_headless') {
-                    return await prefabTools.batchEditHeadless(args);
+                if (action === 'batch_edit_headless' || action === 'edit_headless') {
+                    const files = args?.files || (args?.targetFile || args?.prefabPath ? [args.targetFile || args.prefabPath] : []);
+                    return await prefabTools.batchEditHeadless({ ...args, files });
                 }
                 if (action === 'list' || action === 'info' || action === 'validate') {
                     return await prefabTools.handlePrefabBrowse(args);
@@ -1117,11 +1160,13 @@ export class IntentDispatcher {
         if (toolName === 'prefab_diff' || toolName === 'diff_prefab' || toolName === 'diff_prefabs') {
             return await this.dispatchIntent('prefab_manage', { action: 'diff', ...args });
         }
-        if (toolName === 'inspect_headless' || toolName === 'prefab_inspect_headless') {
-            return await this.dispatchIntent('prefab_manage', { action: 'inspect_headless', ...args });
+        if (toolName === 'inspect_headless' || toolName === 'prefab_inspect_headless' || toolName === 'scene_inspect_headless') {
+            const isScene = String(args?.targetFile || args?.scenePath).endsWith('.scene');
+            return await this.dispatchIntent(isScene ? 'scene_manage' : 'prefab_manage', { action: 'inspect_headless', ...args });
         }
-        if (toolName === 'batch_edit_headless' || toolName === 'prefab_batch_edit_headless') {
-            return await this.dispatchIntent('prefab_manage', { action: 'batch_edit_headless', ...args });
+        if (toolName === 'batch_edit_headless' || toolName === 'prefab_batch_edit_headless' || toolName === 'edit_headless' || toolName === 'scene_edit_headless') {
+            const isScene = String(args?.targetFile || args?.scenePath).endsWith('.scene');
+            return await this.dispatchIntent(isScene ? 'scene_manage' : 'prefab_manage', { action: 'edit_headless', ...args });
         }
         if (toolName === 'batch_query' || toolName === 'nexus_batch_query') {
             return await this.dispatchIntent('nexus_manage', { action: 'batch_query', ...args });

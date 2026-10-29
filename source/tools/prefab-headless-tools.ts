@@ -3,6 +3,7 @@ import * as path from 'path';
 import { ToolResponse } from '../types';
 import { PrefabAstParser } from '../utils/prefab-ast-parser';
 import { AssetResolver } from '../utils/asset-resolver';
+import { HeadlessEditTools } from './headless-edit-tools';
 
 declare const Editor: any;
 
@@ -285,161 +286,14 @@ export class PrefabHeadlessTools {
      */
     public async batchEditHeadless(args: {
         files: string[];
-        operations: Array<{
-            type?: 'update_component_property' | 'set_component_property' | 'set_transform' | 'set_active' | string;
-            action?: string;
-            nodePath?: string;
-            targetNode?: string;
-            componentType?: string;
-            property?: string;
-            properties?: Record<string, any>;
-            value?: any;
-            valueMode?: 'self_node' | string;
-            position?: { x?: number; y?: number; z?: number };
-            scale?: { x?: number; y?: number; z?: number };
-            rotation?: { x?: number; y?: number; z?: number; w?: number };
-            active?: boolean;
-        }>;
+        operations: Array<any>;
         dryRun?: boolean;
     }): Promise<ToolResponse> {
-        try {
-            if (!Array.isArray(args.files) || args.files.length === 0) {
-                return { success: false, error: 'No target files specified for batch edit' };
-            }
-            if (!Array.isArray(args.operations) || args.operations.length === 0) {
-                return { success: false, error: 'No operations specified for batch edit' };
-            }
-
-            const matchedFiles: string[] = [];
-            for (const pattern of args.files) {
-                const resolved = this.resolveToDiskPath(pattern);
-                if (resolved.includes('*')) {
-                    // Glob pattern
-                    const dir = path.dirname(resolved);
-                    const filePattern = path.basename(resolved);
-                    const regex = new RegExp('^' + filePattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$', 'i');
-                    if (fs.existsSync(dir)) {
-                        const items = fs.readdirSync(dir);
-                        for (const item of items) {
-                            if (regex.test(item) && item.endsWith('.prefab')) {
-                                matchedFiles.push(path.join(dir, item));
-                            }
-                        }
-                    }
-                } else if (fs.existsSync(resolved)) {
-                    matchedFiles.push(resolved);
-                }
-            }
-
-            if (matchedFiles.length === 0) {
-                return { success: false, error: `No matching prefab files found for: ${args.files.join(', ')}` };
-            }
-
-            const dryRun = args.dryRun === true;
-            let modifiedFilesCount = 0;
-            let skippedFilesCount = 0;
-            const details: Array<{ file: string; changes: string[] }> = [];
-
-            for (const filePath of matchedFiles) {
-                try {
-                    const parser = await PrefabAstParser.loadFromFile(filePath);
-                    const fileChanges: string[] = [];
-
-                    for (const op of args.operations) {
-                        const nodeSelector = op.nodePath || (op as any).targetNode;
-                        const targetNode = nodeSelector
-                            ? parser.findNodeByPath(nodeSelector)
-                            : parser.getRootNode();
-
-                        if (!targetNode) {
-                            fileChanges.push(`Node "${nodeSelector || 'root'}" not found; skipped`);
-                            continue;
-                        }
-
-                        const opType = op.type || (op as any).action;
-
-                        if (opType === 'update_component_property' || opType === 'set_component_property') {
-                            const compType = op.componentType || (op as any).component;
-                            if (!compType) continue;
-
-                            const propsDict = (op as any).properties;
-                            if (propsDict && typeof propsDict === 'object') {
-                                for (const [propName, propVal] of Object.entries(propsDict)) {
-                                    const res = parser.setComponentProperty(
-                                        targetNode.id,
-                                        compType,
-                                        propName,
-                                        propVal,
-                                        { valueMode: op.valueMode === 'self_node' ? 'self_node' : undefined }
-                                    );
-                                    fileChanges.push(res.message);
-                                }
-                            } else if (op.property !== undefined) {
-                                const res = parser.setComponentProperty(
-                                    targetNode.id,
-                                    compType,
-                                    op.property,
-                                    op.value,
-                                    { valueMode: op.valueMode === 'self_node' ? 'self_node' : undefined }
-                                );
-                                fileChanges.push(res.message);
-                            }
-                        } else if (opType === 'set_transform') {
-                            const success = parser.setTransform(targetNode.id, {
-                                position: op.position,
-                                scale: op.scale,
-                                rotation: op.rotation
-                            });
-                            if (success) {
-                                fileChanges.push(`Updated transform on node ${targetNode.name}`);
-                            }
-                        } else if (opType === 'set_active') {
-                            if (op.active !== undefined) {
-                                targetNode.node._active = op.active;
-                                fileChanges.push(`Set active = ${op.active} on node ${targetNode.name}`);
-                            }
-                        }
-                    }
-
-                    if (fileChanges.length > 0) {
-                        if (!dryRun) {
-                            await parser.save();
-                            this.notifyAssetDb(filePath);
-                        }
-                        modifiedFilesCount++;
-                        details.push({
-                            file: path.basename(filePath),
-                            changes: fileChanges
-                        });
-                    } else {
-                        skippedFilesCount++;
-                    }
-                } catch (e: any) {
-                    skippedFilesCount++;
-                    details.push({
-                        file: path.basename(filePath),
-                        changes: [`Error: ${e?.message || e}`]
-                    });
-                }
-            }
-
-            return {
-                success: true,
-                message: `${dryRun ? '[DryRun] Simulated' : 'Successfully applied'} batch edit on ${modifiedFilesCount} files (${skippedFilesCount} skipped)`,
-                data: {
-                    dryRun,
-                    totalTargeted: matchedFiles.length,
-                    modifiedFilesCount,
-                    skippedFilesCount,
-                    details
-                }
-            };
-        } catch (error: any) {
-            return {
-                success: false,
-                error: `Batch edit headless failed: ${error?.message || error}`
-            };
-        }
+        return await HeadlessEditTools.getInstance().batchEditFiles({
+            files: args.files,
+            operations: args.operations,
+            dryRun: args.dryRun
+        });
     }
 
     private notifyAssetDb(filePath: string): void {

@@ -2,6 +2,7 @@ import { ToolDefinition, ToolResponse, ToolExecutor, SceneInfo } from '../types'
 import * as fs from 'fs';
 import * as path from 'path';
 import { EXTENSION_NAME, SCENE_SCRIPT_TARGET } from '../constants';
+import { HeadlessEditTools } from './headless-edit-tools';
 
 declare const Editor: any;
 
@@ -218,6 +219,12 @@ export class SceneTools implements ToolExecutor {
                 return await this.handleQuerySystem(args);
             case 'inspect_scene':
                 return await this.inspectScene(args || {});
+            case 'scene_inspect_headless':
+            case 'inspect_headless':
+                return await HeadlessEditTools.getInstance().inspectHeadless(args);
+            case 'scene_edit_headless':
+            case 'edit_headless':
+                return await HeadlessEditTools.getInstance().executeChain(args);
             default:
                 throw new Error(`Unknown tool: ${toolName}`);
         }
@@ -780,6 +787,11 @@ export class SceneTools implements ToolExecutor {
                 return await this.saveSceneAs(args.path);
             case 'close':
                 return await this.closeScene();
+            case 'inspect_headless':
+                return await HeadlessEditTools.getInstance().inspectHeadless(args);
+            case 'edit_headless':
+            case 'batch_edit_headless':
+                return await HeadlessEditTools.getInstance().executeChain(args);
             default:
                 return { success: false, error: `Unknown scene management action: ${action}` };
         }

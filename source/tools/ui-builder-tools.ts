@@ -1,5 +1,6 @@
 import { ToolDefinition, ToolResponse, ToolExecutor } from '../types';
 import { SCENE_SCRIPT_TARGET } from '../constants';
+import { HeadlessEditTools, HeadlessChainOp } from './headless-edit-tools';
 
 declare const Editor: any;
 
@@ -148,6 +149,11 @@ export class UIBuilderTools implements ToolExecutor {
 
     async execute(toolName: string, args: any): Promise<ToolResponse> {
         const action = args?.action;
+        const hasTargetFile = Boolean(args?.targetFile || args?.scenePath || args?.prefabPath || args?.file);
+        if (hasTargetFile || String(action).endsWith('_headless')) {
+            return await this.handleHeadlessUIBuild(args);
+        }
+
         switch (action) {
             case 'build_tree':
                 return await this.handleBuildTree(args);
@@ -167,6 +173,124 @@ export class UIBuilderTools implements ToolExecutor {
                     error: `Unknown ui_builder action: "${action}". Valid actions: ["build_tree", "create_dialog", "create_button", "create_list", "apply_widget", "apply_layout"]`
                 };
         }
+    }
+
+    private async handleHeadlessUIBuild(args: any): Promise<ToolResponse> {
+        const targetFile = args?.targetFile || args?.scenePath || args?.prefabPath || args?.file;
+        const parentPath = args?.parent || args?.parentPath || 'Canvas';
+        const tree = args?.tree;
+
+        if (!tree) {
+            return { success: false, error: 'Headless UI build requires "tree" structure' };
+        }
+
+        const ops = UIBuilderTools.flattenUITreeToOps(tree, parentPath);
+        return await HeadlessEditTools.getInstance().executeChain({
+            targetFile,
+            chain: ops,
+            dryRun: args?.dryRun
+        });
+    }
+
+    public static flattenUITreeToOps(node: UIElementNode, parentPath: string): HeadlessChainOp[] {
+        const ops: HeadlessChainOp[] = [];
+        const currentPath = parentPath ? `${parentPath}/${node.name}` : node.name;
+
+        // 1. Create node
+        ops.push({
+            action: 'create_node',
+            name: node.name,
+            parentPath: parentPath,
+            position: node.position,
+            size: node.size,
+            anchor: node.anchor,
+            active: node.active !== false,
+            is2D: true
+        });
+
+        // 2. Add Sprite
+        if (node.sprite || node.type === 'panel') {
+            ops.push({
+                action: 'add_component',
+                nodePath: currentPath,
+                componentType: 'cc.Sprite',
+                properties: {
+                    ...(node.sprite?.spriteFrame ? { spriteFrame: node.sprite.spriteFrame } : {}),
+                    ...(node.sprite?.color ? { color: node.sprite.color } : {}),
+                    ...(node.sprite?.type !== undefined ? { type: node.sprite.type } : {})
+                }
+            });
+        }
+
+        // 3. Add Label
+        if (node.label || node.type === 'label') {
+            ops.push({
+                action: 'add_component',
+                nodePath: currentPath,
+                componentType: 'cc.Label',
+                properties: {
+                    ...(node.label?.string !== undefined ? { string: node.label.string } : { string: node.name }),
+                    ...(node.label?.fontSize !== undefined ? { fontSize: node.label.fontSize } : {}),
+                    ...(node.label?.lineHeight !== undefined ? { lineHeight: node.label.lineHeight } : {}),
+                    ...(node.label?.color ? { color: node.label.color } : {})
+                }
+            });
+        }
+
+        // 4. Add Button
+        if (node.button || node.type === 'button') {
+            ops.push({
+                action: 'add_component',
+                nodePath: currentPath,
+                componentType: 'cc.Button',
+                properties: {
+                    ...(node.button?.transition !== undefined ? { transition: node.button.transition } : {}),
+                    ...(node.button?.zoomScale !== undefined ? { zoomScale: node.button.zoomScale } : {}),
+                    ...(node.button?.interactable !== undefined ? { interactable: node.button.interactable } : {})
+                }
+            });
+        }
+
+        // 5. Add Widget
+        if (node.widget) {
+            ops.push({
+                action: 'add_component',
+                nodePath: currentPath,
+                componentType: 'cc.Widget',
+                properties: node.widget
+            });
+        }
+
+        // 6. Add Layout
+        if (node.layout) {
+            ops.push({
+                action: 'add_component',
+                nodePath: currentPath,
+                componentType: 'cc.Layout',
+                properties: node.layout
+            });
+        }
+
+        // 7. Custom components
+        if (Array.isArray(node.components)) {
+            for (const c of node.components) {
+                ops.push({
+                    action: 'add_component',
+                    nodePath: currentPath,
+                    componentType: c.type,
+                    properties: c.properties || {}
+                });
+            }
+        }
+
+        // 8. Recursively process children
+        if (Array.isArray(node.children)) {
+            for (const child of node.children) {
+                ops.push(...UIBuilderTools.flattenUITreeToOps(child, currentPath));
+            }
+        }
+
+        return ops;
     }
 
     private async resolveParentUuid(parentQuery?: string): Promise<string> {

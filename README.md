@@ -63,11 +63,11 @@ This project originated as an open-source fork of [`cocos-mcp-server`](https://g
 
 | Intent Tool | Key Arguments | Purpose & Best Practice |
 | :--- | :--- | :--- |
-| **`scene_manage`** | `action: "get_current" \| "hierarchy" \| "inspect" \| "open" \| "save" \| "create"`, `includeComponents: true` | Scene lifecycle, full tree inspection, and scene scripts. |
-| **`node_manage`** | `action: "query" \| "create" \| "delete" \| "duplicate" \| "transform" \| "reparent"`, `nodeUuid`, `position`, `size`, `queryType` | Universal node search, creation, transform, and hierarchy manipulation. |
-| **`component_manage`** | `action: "add" \| "remove" \| "get" \| "update" \| "bind_event" \| "query_class_info"`, `nodeUuid`, `componentType`, `properties` | Add/remove components, deep property updates with auto-save, click binding, and @ccclass reflection. |
-| **`prefab_manage`** | `action: "list" \| "info" \| "validate" \| "enter" \| "exit" \| "save" \| "instantiate" \| "atomic_edit" \| "diff" \| "inspect_headless" \| "batch_edit_headless"`, `prefabPath`, `nodeUuid` | Complete prefab lifecycle, non-destructive editing sessions, atomic batch edits, headless diff, offline inspection, and batch headless edits. |
-| **`ui_builder`** | `action: "build_tree" \| "create_dialog" \| "create_button" \| "create_list"`, `tree`, `parent` | Declarative 1-shot UI generation with auto-UITransform, Widget constraints, and Layouts. |
+| **`scene_manage`** | `action: "get_current" \| "hierarchy" \| "inspect" \| "open" \| "save" \| "create" \| "inspect_headless" \| "edit_headless"`, `scenePath`, `targetFile`, `chain` | Scene lifecycle, full tree inspection, scene scripts, and direct fs headless scene inspection/editing. |
+| **`node_manage`** | `action: "query" \| "create" \| "delete" \| "duplicate" \| "transform" \| "reparent" \| "create_headless" \| "delete_headless" \| "transform_headless" \| "reparent_headless" \| "edit_headless"`, `targetFile`, `nodeUuid`, `nodePath`, `position`, `size` | Universal node search, creation, transform, hierarchy manipulation, and direct fs headless editing. |
+| **`component_manage`** | `action: "add" \| "remove" \| "get" \| "update" \| "bind_event" \| "query_class_info" \| "add_headless" \| "remove_headless" \| "update_headless" \| "edit_headless"`, `targetFile`, `nodeUuid`, `nodePath`, `componentType`, `properties` | Add/remove components, deep property updates with auto-save, click binding, @ccclass reflection, and direct fs headless component authoring. |
+| **`prefab_manage`** | `action: "list" \| "info" \| "validate" \| "enter" \| "exit" \| "save" \| "instantiate" \| "atomic_edit" \| "diff" \| "inspect_headless" \| "batch_edit_headless" \| "edit_headless"`, `prefabPath`, `targetFile`, `files`, `operations` | Complete prefab lifecycle, non-destructive editing sessions, atomic batch edits, headless diff, offline inspection, and batch headless edits. |
+| **`ui_builder`** | `action: "build_tree" \| "create_dialog" \| "create_button" \| "create_list" \| "build_tree_headless"`, `targetFile`, `tree`, `parent` | Declarative 1-shot UI generation with auto-UITransform, Widget constraints, Layouts, and headless disk output. |
 | **`anim_manage`** | `action: "clip_inspect" \| "clip_create" \| "clip_add_track" \| "clip_add_keyframe" \| "clip_apply_preset" \| "slice_fbx" \| "graph_inspect"`, `animPath`, `property`, `time`, `value` | Timeline AnimationClip editing, property curves, easing modes, animation events, presets, FBX slicing, and AnimGraph state machines. |
 | **`asset_manage`** | `action: "query" \| "resolve" \| "import" \| "delete" \| "dependencies" \| "trace_references" \| "repair_broken_references"`, `folder`, `assetPath`, `target`, `replacementMap` | Asset discovery, dependency inspection, smart sub-asset resolution (`@spriteFrame`, `@texture`), bidirectional reference tracing, and broken GUID auto-healing. |
 | **`knowledge_query`** | `action: "query_component" \| "query_rules" \| "query_layout_patterns" \| "get_mcp_guide" \| "list_topics"`, `className`, `topic` | Offline architecture reference for components, coordinates, rules, and live MCP documentation. |
@@ -152,9 +152,17 @@ This project originated as an open-source fork of [`cocos-mcp-server`](https://g
 * Deep offline inspect of node hierarchy & components: `prefab_manage(action="inspect_headless", prefabPath="db://assets/...", resolveReferences=true)`.
 * Batch extract properties across multi-prefabs in parallel: `nexus_manage(action="batch_query", folder="db://assets/...", pattern="*.prefab", queries=[{ extract: ["position", "components"] }])`.
 * Bidirectional reference tracer: `asset_manage(action="trace_references", target="db://assets/...")`.
-* 1-Click batch reference healer: `asset_manage(action="repair_broken_references", targetPath="db://assets", replacementMap={"broken-uuid": "new-uuid"})\`.
+* 1-Click batch reference healer: `asset_manage(action="repair_broken_references", targetPath="db://assets", replacementMap={"broken-uuid": "new-uuid"})`.
 * Multi-prefab headless modification: `prefab_manage(action="batch_edit_headless", files=["db://assets/..."], operations=[...], dryRun=true)`.
 * Live game profiler telemetry: `debug_manage(action="profiler_snapshot", samples=3)`.
+
+### K. Fast Headless Direct-to-Disk Editing (Bypass Editor Viewport)
+* Inspect scene without opening editor canvas: `scene_manage(action="inspect_headless", scenePath="db://assets/scenes/Game.scene")`.
+* Create node headlessly: `node_manage(targetFile="db://assets/scenes/Game.scene", action="create_headless", name="Enemy", parentPath="Canvas", position={x: 100, y: 50})`.
+* Add component headlessly: `component_manage(targetFile="db://assets/scenes/Game.scene", nodePath="Canvas/Enemy", action="add_headless", componentType="cc.RigidBody2D", properties={enabledContactListener: true})`.
+* Update component headlessly: `component_manage(targetFile="db://assets/prefabs/Hero.prefab", nodePath="Weapon", action="update_headless", componentType="WeaponController", properties={damage: 100})`.
+* Execute chain of operations in 1 atomic pass: `scene_manage(action="edit_headless", scenePath="db://assets/scenes/Game.scene", chain=[{ action: "create_node", name: "Star", parentPath: "Canvas" }, { action: "add_component", nodePath: "Canvas/Star", componentType: "cc.Sprite" }])`.
+* Build complete UI tree headlessly: `ui_builder(action="build_tree_headless", targetFile="db://assets/scenes/Game.scene", parent="Canvas", tree={...})`.
 
 ---
 

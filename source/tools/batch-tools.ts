@@ -1,4 +1,5 @@
 import { ToolDefinition, ToolResponse, ToolExecutor } from '../types';
+import { HeadlessEditTools, HeadlessChainOp } from './headless-edit-tools';
 
 declare const Editor: any;
 
@@ -60,6 +61,25 @@ export class BatchTools implements ToolExecutor {
                 success: false,
                 error: 'operations array is required and must contain at least 1 operation'
             };
+        }
+
+        const targetFile = args?.targetFile || args?.scenePath || args?.prefabPath || args?.file;
+        if (targetFile) {
+            const chainOps: HeadlessChainOp[] = operations.map((op: any) => {
+                if (op.action || op.type || op.op) return op;
+                if (op.args) {
+                    return {
+                        action: op.args.action || op.tool,
+                        ...op.args
+                    };
+                }
+                return op;
+            });
+            return await HeadlessEditTools.getInstance().executeChain({
+                targetFile,
+                chain: chainOps,
+                dryRun: args?.dryRun
+            });
         }
 
         const { MCPServer } = require('../mcp-server');

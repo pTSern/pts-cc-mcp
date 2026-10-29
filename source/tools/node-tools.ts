@@ -1,6 +1,7 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, NodeInfo } from '../types';
 import { ComponentTools } from './component-tools';
 import { EXTENSION_NAME, SCENE_SCRIPT_TARGET } from '../constants';
+import { HeadlessEditTools } from './headless-edit-tools';
 
 declare const Editor: any;
 
@@ -372,6 +373,12 @@ export class NodeTools implements ToolExecutor {
         console.log(`[NodeTools] Executing ${toolName} with args:`, args);
         
         try {
+            const hasTargetFile = Boolean(args?.targetFile || args?.scenePath || args?.prefabPath || args?.file);
+            const isHeadless = hasTargetFile || toolName.includes('headless') || String(args?.action).includes('headless');
+            if (isHeadless) {
+                return await this.handleHeadlessNodeOperation(args);
+            }
+
             switch (toolName) {
                 case 'node_query':
                     return await this.handleNodeQuery(args);
@@ -399,6 +406,98 @@ export class NodeTools implements ToolExecutor {
                 error: error instanceof Error ? error.message : String(error)
             };
         }
+    }
+
+    public async handleHeadlessNodeOperation(args: any): Promise<ToolResponse> {
+        const targetFile = args?.targetFile || args?.scenePath || args?.prefabPath || args?.file;
+        const action = args?.action || 'query';
+        const headless = HeadlessEditTools.getInstance();
+
+        if (action === 'edit_headless' || action === 'chain') {
+            return await headless.executeChain({
+                targetFile,
+                chain: args?.chain || args?.operations,
+                dryRun: args?.dryRun
+            });
+        }
+
+        if (action === 'create' || action === 'create_headless') {
+            return await headless.executeChain({
+                targetFile,
+                chain: [{
+                    action: 'create_node',
+                    name: args?.name || 'NewNode',
+                    parentPath: args?.parentUuid || args?.parentPath || args?.parent,
+                    position: args?.position,
+                    rotation: args?.rotation,
+                    scale: args?.scale,
+                    size: args?.size,
+                    anchor: args?.anchor,
+                    active: args?.active,
+                    layer: args?.layer,
+                    is2D: args?.is2D
+                }],
+                dryRun: args?.dryRun
+            });
+        }
+
+        if (action === 'delete' || action === 'delete_headless') {
+            return await headless.executeChain({
+                targetFile,
+                chain: [{
+                    action: 'delete_node',
+                    nodePath: args?.uuid || args?.nodeUuid || args?.nodePath || args?.name
+                }],
+                dryRun: args?.dryRun
+            });
+        }
+
+        if (action === 'transform' || action === 'transform_headless') {
+            return await headless.executeChain({
+                targetFile,
+                chain: [{
+                    action: 'set_transform',
+                    nodePath: args?.uuid || args?.nodeUuid || args?.nodePath || args?.name,
+                    position: args?.position,
+                    rotation: args?.rotation,
+                    scale: args?.scale,
+                    size: args?.size,
+                    anchor: args?.anchor
+                }],
+                dryRun: args?.dryRun
+            });
+        }
+
+        if (action === 'reparent' || action === 'reparent_headless' || action === 'move') {
+            return await headless.executeChain({
+                targetFile,
+                chain: [{
+                    action: 'reparent_node',
+                    nodePath: args?.uuid || args?.nodeUuid || args?.nodePath || args?.name,
+                    newParentPath: args?.newParentUuid || args?.newParentPath || args?.parentUuid || args?.parentPath
+                }],
+                dryRun: args?.dryRun
+            });
+        }
+
+        if (action === 'set_active' || action === 'set_active_headless') {
+            return await headless.executeChain({
+                targetFile,
+                chain: [{
+                    action: 'set_active',
+                    nodePath: args?.uuid || args?.nodeUuid || args?.nodePath || args?.name,
+                    active: args?.active
+                }],
+                dryRun: args?.dryRun
+            });
+        }
+
+        // Default: query / inspect
+        return await headless.inspectHeadless({
+            targetFile,
+            targetNode: args?.name || args?.pattern || args?.uuid || args?.nodeUuid || args?.path,
+            includeComponents: args?.includeComponents
+        });
     }
 
     private async handleNodeQuery(args: any): Promise<ToolResponse> {

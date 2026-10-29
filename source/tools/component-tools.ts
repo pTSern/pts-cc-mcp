@@ -1,6 +1,7 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, ComponentInfo } from '../types';
 import { EXTENSION_NAME, SCENE_SCRIPT_TARGET } from '../constants';
 import { AssetResolver } from '../utils/asset-resolver';
+import { HeadlessEditTools } from './headless-edit-tools';
 
 export class ComponentTools implements ToolExecutor {
     getTools(): ToolDefinition[] {
@@ -259,6 +260,12 @@ export class ComponentTools implements ToolExecutor {
     }
 
     async execute(toolName: string, args: any): Promise<ToolResponse> {
+        const hasTargetFile = Boolean(args?.targetFile || args?.scenePath || args?.prefabPath || args?.file);
+        const isHeadless = hasTargetFile || toolName.includes('headless') || String(args?.action).includes('headless');
+        if (isHeadless) {
+            return await this.handleHeadlessComponentOperation(args);
+        }
+
         switch (toolName) {
             case 'component_manage':
                 return await this.handleComponentManage(args);
@@ -288,6 +295,69 @@ export class ComponentTools implements ToolExecutor {
             default:
                 throw new Error(`Unknown tool: ${toolName}`);
         }
+    }
+
+    public async handleHeadlessComponentOperation(args: any): Promise<ToolResponse> {
+        const targetFile = args?.targetFile || args?.scenePath || args?.prefabPath || args?.file;
+        const action = args?.action || 'get';
+        const headless = HeadlessEditTools.getInstance();
+
+        if (action === 'edit_headless' || action === 'chain') {
+            return await headless.executeChain({
+                targetFile,
+                chain: args?.chain || args?.operations,
+                dryRun: args?.dryRun
+            });
+        }
+
+        if (action === 'add' || action === 'add_headless') {
+            return await headless.executeChain({
+                targetFile,
+                chain: [{
+                    action: 'add_component',
+                    nodePath: args?.nodeUuid || args?.uuid || args?.nodePath,
+                    componentType: args?.componentType,
+                    properties: args?.properties || {}
+                }],
+                dryRun: args?.dryRun
+            });
+        }
+
+        if (action === 'remove' || action === 'remove_headless') {
+            return await headless.executeChain({
+                targetFile,
+                chain: [{
+                    action: 'remove_component',
+                    nodePath: args?.nodeUuid || args?.uuid || args?.nodePath,
+                    componentType: args?.componentType,
+                    componentIndex: args?.componentIndex
+                }],
+                dryRun: args?.dryRun
+            });
+        }
+
+        if (action === 'update' || action === 'update_headless' || action === 'set_property') {
+            return await headless.executeChain({
+                targetFile,
+                chain: [{
+                    action: 'update_component',
+                    nodePath: args?.nodeUuid || args?.uuid || args?.nodePath,
+                    componentType: args?.componentType,
+                    property: args?.property,
+                    properties: args?.properties,
+                    value: args?.value,
+                    valueMode: args?.valueMode
+                }],
+                dryRun: args?.dryRun
+            });
+        }
+
+        // Default: get / inspect
+        return await headless.inspectHeadless({
+            targetFile,
+            targetNode: args?.nodeUuid || args?.uuid || args?.nodePath,
+            includeComponents: true
+        });
     }
 
     // New consolidated handler function
