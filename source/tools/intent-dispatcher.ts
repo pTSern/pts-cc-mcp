@@ -77,7 +77,7 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['query', 'create', 'delete', 'duplicate', 'transform', 'reparent', 'set_active', 'clipboard', 'emit_event', 'simulate_click', 'find_nodes', 'node_tree', 'create_headless', 'delete_headless', 'duplicate_headless', 'transform_headless', 'reparent_headless', 'set_active_headless', 'query_headless', 'edit_headless'],
+                            enum: ['query', 'create', 'delete', 'duplicate', 'transform', 'reparent', 'set_active', 'clipboard', 'emit_event', 'simulate_click', 'find_nodes', 'node_tree', 'find_nodes_headless', 'create_headless', 'delete_headless', 'duplicate_headless', 'transform_headless', 'reparent_headless', 'set_active_headless', 'query_headless', 'edit_headless'],
                             description: 'Node action opcode: standard editor actions or headless actions using targetFile'
                         },
                         targetFile: { type: 'string', description: 'Target .scene or .prefab file path for headless direct fs editing' },

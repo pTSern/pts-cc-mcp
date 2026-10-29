@@ -406,6 +406,8 @@ export class NodeTools implements ToolExecutor {
                 case 'scene-query-node-tree':
                 case 'node_tree':
                     return await this.handleNodeTree(args);
+                case 'node_manage':
+                    return await this.handleHeadlessNodeOperation(args);
                 default:
                     throw new Error(`Unknown tool: ${toolName}`);
             }
@@ -499,6 +501,24 @@ export class NodeTools implements ToolExecutor {
                     active: args?.active
                 }],
                 dryRun: args?.dryRun
+            });
+        }
+
+        if (
+            action === 'find_nodes' ||
+            action === 'find' ||
+            action === 'find_by_name' ||
+            action === 'find_nodes_headless' ||
+            (action === 'query' && (args?.pattern || args?.name || args?.component || args?.componentType))
+        ) {
+            return await headless.findNodesHeadless({
+                targetFile,
+                pattern: args?.pattern,
+                name: args?.name,
+                exact: args?.exact || args?.exactMatch,
+                component: args?.component || args?.componentType,
+                activeOnly: args?.activeOnly,
+                limit: args?.limit
             });
         }
 

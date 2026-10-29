@@ -146,6 +146,60 @@ export class HeadlessEditTools {
     }
 
     /**
+     * Find nodes matching pattern, exact name, or component type headlessly from disk AST.
+     */
+    public async findNodesHeadless(args: {
+        targetFile?: string;
+        scenePath?: string;
+        prefabPath?: string;
+        file?: string;
+        pattern?: string;
+        name?: string;
+        exact?: boolean;
+        component?: string;
+        activeOnly?: boolean;
+        limit?: number;
+    }): Promise<ToolResponse> {
+        try {
+            const rawTarget = args.targetFile || args.scenePath || args.prefabPath || args.file;
+            if (!rawTarget) {
+                return { success: false, error: 'find_nodes_headless requires targetFile (or scenePath/prefabPath)' };
+            }
+
+            const diskPath = this.resolveToDiskPath(rawTarget);
+            if (!fs.existsSync(diskPath)) {
+                return { success: false, error: `Target file not found: ${rawTarget}` };
+            }
+
+            const parser = await PrefabAstParser.loadFromFile(diskPath);
+            const nodes = parser.findNodes({
+                pattern: args.pattern,
+                name: args.name,
+                exact: args.exact,
+                component: args.component,
+                activeOnly: args.activeOnly,
+                limit: args.limit
+            });
+
+            return {
+                success: true,
+                message: `Found ${nodes.length} nodes matching query in ${path.basename(diskPath)}`,
+                data: {
+                    file: path.basename(diskPath),
+                    type: parser.isScene() ? 'scene' : 'prefab',
+                    count: nodes.length,
+                    nodes
+                }
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: `Headless find nodes failed: ${error?.message || error}`
+            };
+        }
+    }
+
+    /**
      * Execute a chain of headless mutations on a single .scene or .prefab file in a single atomic pass.
      */
     public async executeChain(args: {

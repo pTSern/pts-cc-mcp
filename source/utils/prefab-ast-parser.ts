@@ -25,6 +25,15 @@ export interface ResolvedTargetPointer {
     description: string;
 }
 
+export interface AstNodeSearchResult {
+    id: number;
+    name: string;
+    path: string;
+    active: boolean;
+    layer?: number;
+    components: string[];
+}
+
 /**
  * Headless AST parser for Cocos Creator 3.8.x serialized .prefab and .scene JSON files.
  * Provides array index navigation, subpath traversal, component extraction,
@@ -255,6 +264,74 @@ export class PrefabAstParser {
         }
 
         return this.findNodeByPath(nodeSelector);
+    }
+
+    public findNodes(options: {
+        pattern?: string;
+        name?: string;
+        exact?: boolean;
+        component?: string;
+        activeOnly?: boolean;
+        limit?: number;
+    } = {}): AstNodeSearchResult[] {
+        const results: AstNodeSearchResult[] = [];
+        const limit = typeof options.limit === 'number' && options.limit > 0 ? options.limit : 50;
+        const searchPattern = (options.name || options.pattern || '').trim().toLowerCase();
+        const exactMatch = options.exact === true || Boolean(options.name && !options.pattern);
+        const searchComp = options.component ? options.component.trim().toLowerCase() : null;
+
+        const allNodes = this.getAllNodes();
+        for (const item of allNodes) {
+            const rawNode = item.node;
+            const isActive = rawNode._active !== false;
+
+            if (options.activeOnly && !isActive) {
+                continue;
+            }
+
+            if (searchPattern) {
+                const nodeName = item.name.toLowerCase();
+                const nodePath = item.path.toLowerCase();
+                if (exactMatch) {
+                    if (nodeName !== searchPattern && nodePath !== searchPattern) {
+                        continue;
+                    }
+                } else {
+                    if (!nodeName.includes(searchPattern) && !nodePath.includes(searchPattern)) {
+                        continue;
+                    }
+                }
+            }
+
+            const compItems = this.getComponents(item.id);
+            const compNames = compItems.map(c => c.className || c.type);
+
+            if (searchComp) {
+                const hasComp = compItems.some(c => {
+                    const cType = c.type.toLowerCase();
+                    const cClass = (c.className || '').toLowerCase();
+                    return cType === searchComp || cClass === searchComp || cType.includes(searchComp) || cClass.includes(searchComp);
+                });
+                if (!hasComp) {
+                    continue;
+                }
+            }
+
+            results.push({
+                id: item.id,
+                name: item.name,
+                path: item.path,
+                active: isActive,
+                layer: rawNode._layer,
+                components: compNames
+            });
+
+            if (results.length >= limit) {
+                break;
+            }
+        }
+
+        return results;
     }
 
     public getComponents(nodeId: number): AstComponentItem[] {

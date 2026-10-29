@@ -124,9 +124,9 @@ export class ToolManager {
         try {
             const toolModNames = [
                 './scene-tools', './node-tools', './component-tools', './prefab-tools',
-                './project-tools', './debug-tools', './preferences-tools', './server-tools',
+                './project-tools', './debug-tools', './preferences-tools',
                 './broadcast-tools', './scene-view-tools', './reference-image-tools',
-                './asset-advanced-tools', './validation-tools', './game-tools',
+                './asset-advanced-tools', './validation-tools',
                 './animgraph-tools', './batch-tools', './knowledge-tools', './ui-builder-tools',
                 './nexus-tools', './browser-tools'
             ];
@@ -144,13 +144,11 @@ export class ToolManager {
             const { ProjectTools } = require('./project-tools');
             const { DebugTools } = require('./debug-tools');
             const { PreferencesTools } = require('./preferences-tools');
-            const { ServerTools } = require('./server-tools');
             const { BroadcastTools } = require('./broadcast-tools');
             const { SceneViewTools } = require('./scene-view-tools');
             const { ReferenceImageTools } = require('./reference-image-tools');
             const { AssetAdvancedTools } = require('./asset-advanced-tools');
             const { ValidationTools } = require('./validation-tools');
-            const { GameTools } = require('./game-tools');
             const { AnimgraphTools } = require('./animgraph-tools');
             const { BatchTools } = require('./batch-tools');
             const { KnowledgeTools } = require('./knowledge-tools');
@@ -168,7 +166,6 @@ export class ToolManager {
                 project: new ProjectTools(),
                 debug: new DebugTools(),
                 preferences: new PreferencesTools(),
-                server: new ServerTools(),
                 broadcast: new BroadcastTools(),
                 sceneView: new SceneViewTools(),
                 referenceImage: new ReferenceImageTools(),
@@ -176,7 +173,6 @@ export class ToolManager {
                 validation: new ValidationTools(),
                 nexus: new NexusTools(),
                 browser: new BrowserTools(),
-                game: new GameTools(),
                 animgraph: new AnimgraphTools(),
                 animation: new AnimationTools(),
                 batch: new BatchTools(),
