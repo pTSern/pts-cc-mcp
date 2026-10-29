@@ -4,7 +4,7 @@ import { readFileSync } from 'fs-extra';
 import { join } from 'path';
 import { createApp, App, defineComponent, ref, computed, onMounted, watch } from 'vue';
 import { EXTENSION_NAME } from '../../constants';
-import { enDict, zhDict } from '../../utils/i18n';
+import { enDict, zhDict, viDict } from '../../utils/i18n';
 
 const panelDataMap = new WeakMap<any, App>();
 
@@ -227,7 +227,8 @@ module.exports = Editor.Panel.define({
                     // ==================== i18n System ====================
                     const translations: Record<string, Record<string, string>> = {
                         en: enDict,
-                        zh: zhDict
+                        zh: zhDict,
+                        vi: viDict
                     };
 
                     // Language state - English default

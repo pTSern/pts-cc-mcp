@@ -2,16 +2,19 @@ import * as path from 'path';
 
 let enDict: Record<string, string> = {};
 let zhDict: Record<string, string> = {};
+let viDict: Record<string, string> = {};
 
 try {
     // Relative to dist/utils or source/utils
     enDict = require('../../i18n/en');
     zhDict = require('../../i18n/zh');
+    viDict = require('../../i18n/vi');
 } catch (e) {
     try {
         const rootPath = path.resolve(__dirname, '../../i18n');
         enDict = require(path.join(rootPath, 'en'));
         zhDict = require(path.join(rootPath, 'zh'));
+        viDict = require(path.join(rootPath, 'vi'));
     } catch (e2) {
         console.warn('[pTS-MCP] Failed to load local i18n dictionaries:', e2);
     }
@@ -46,4 +49,4 @@ export function t(key: string, args?: any[] | Record<string, any>): string {
     return text;
 }
 
-export { enDict, zhDict };
+export { enDict, zhDict, viDict };

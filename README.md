@@ -4,15 +4,33 @@
 
 A comprehensive, open-source Model Context Protocol (MCP) server plugin for Cocos Creator 3.8+ that empowers AI coding assistants (Claude CLI, Claude Desktop, Cursor, Windsurf, Antigravity) to inspect, author, validate, and manipulate Cocos Creator games through a standardized protocol.
 
-**🚀 Featuring dual Streamable HTTP & SSE transport, 18 unified intent tools (231+ opcodes), automated browser testing with Chromium, smart node-based viewport interaction, physics & contact auditing, broken GUID auto-healing, and memory profiler telemetry!**
+**🚀 Featuring dual Streamable HTTP & SSE transport, 18 unified intent tools (231+ opcodes), ultra-fast headless direct-disk AST engine (<15ms), automated browser testing with Chromium, smart node-based viewport interaction, physics & contact auditing, broken GUID auto-healing, and multi-language support (English, Chinese, Vietnamese)!**
 
 ---
 
 ## 🙏 Acknowledgments & Credits
 
-This project originated as an open-source fork of [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) created by **LiDaxian**. We express our sincere gratitude and appreciation to **LiDaxian** and all community contributors for laying the foundational architecture and opening the path for AI-driven Cocos Creator development.
+Forked from [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) by **LiDaxian**. Sincere thanks to LiDaxian and community contributors for pioneering Cocos Creator MCP integration.
 
-`pts-cc-mcp` builds upon this foundation as a community-driven, 100% open-source extension, replacing all closed-source/commercial features with superior open-source equivalents.
+---
+
+## 🚀 Version 1.9.0 Changelog: Headless AST Speed Engine, Tool Pruning & Vietnamese i18n
+
+### 1. Ultra-Fast Direct Disk AST Engine (< 15ms)
+- `PrefabAstParser` & `HeadlessEditTools`: Direct file-system mutations on `.scene` and `.prefab` serialized JSON files without opening scenes in the editor viewport.
+- Eliminates editor IPC serialization overhead, modal dialog blocking, and 409 Conflict locks.
+- Supports single-pass atomic chains (`executeChain`) and glob-based batch multi-file modifications (`batch_edit_headless`).
+
+### 2. Direct-to-Disk Node Search (`find_nodes_headless`)
+- `node_manage(action="find_nodes_headless")`: High-speed node discovery from disk AST by substring pattern, exact name, or attached component type (e.g. `cc.BoxCollider2D`, `cc.Sprite`, custom `@ccclass`) in < 15ms.
+
+### 3. Streamlined Registry & Tool Pruning
+- Pruned obsolete, broken, and redundant tools (`game-tools.ts`, `server-tools.ts`).
+- Fully replaced game simulation stubs with Playwright Chromium driver (`browser_manage`) and in-editor click simulation (`component_manage(action="simulate_click")`).
+- Registry automatically purges dead configuration slots upon startup.
+
+### 4. Native Vietnamese Language Support (i18n)
+- Added comprehensive Vietnamese translation dictionary (`i18n/vi.js`) and UI language selector option for the control panel and tool tester.
 
 ---
 
@@ -64,7 +82,7 @@ This project originated as an open-source fork of [`cocos-mcp-server`](https://g
 | Intent Tool | Key Arguments | Purpose & Best Practice |
 | :--- | :--- | :--- |
 | **`scene_manage`** | `action: "get_current" \| "hierarchy" \| "inspect" \| "open" \| "save" \| "create" \| "inspect_headless" \| "edit_headless"`, `scenePath`, `targetFile`, `chain` | Scene lifecycle, full tree inspection, scene scripts, and direct fs headless scene inspection/editing. |
-| **`node_manage`** | `action: "query" \| "create" \| "delete" \| "duplicate" \| "transform" \| "reparent" \| "create_headless" \| "delete_headless" \| "transform_headless" \| "reparent_headless" \| "edit_headless"`, `targetFile`, `nodeUuid`, `nodePath`, `position`, `size` | Universal node search, creation, transform, hierarchy manipulation, and direct fs headless editing. |
+| **`node_manage`** | `action: "query" \| "create" \| "delete" \| "duplicate" \| "transform" \| "reparent" \| "find_nodes" \| "find_nodes_headless" \| "create_headless" \| "delete_headless" \| "transform_headless" \| "reparent_headless" \| "edit_headless"`, `targetFile`, `nodeUuid`, `nodePath`, `position`, `size` | Universal node search, creation, transform, hierarchy manipulation, and direct fs headless editing. |
 | **`component_manage`** | `action: "add" \| "remove" \| "get" \| "update" \| "bind_event" \| "query_class_info" \| "add_headless" \| "remove_headless" \| "update_headless" \| "edit_headless"`, `targetFile`, `nodeUuid`, `nodePath`, `componentType`, `properties` | Add/remove components, deep property updates with auto-save, click binding, @ccclass reflection, and direct fs headless component authoring. |
 | **`prefab_manage`** | `action: "list" \| "info" \| "validate" \| "enter" \| "exit" \| "save" \| "instantiate" \| "atomic_edit" \| "diff" \| "inspect_headless" \| "batch_edit_headless" \| "edit_headless"`, `prefabPath`, `targetFile`, `files`, `operations` | Complete prefab lifecycle, non-destructive editing sessions, atomic batch edits, headless diff, offline inspection, and batch headless edits. |
 | **`ui_builder`** | `action: "build_tree" \| "create_dialog" \| "create_button" \| "create_list" \| "build_tree_headless"`, `targetFile`, `tree`, `parent` | Declarative 1-shot UI generation with auto-UITransform, Widget constraints, Layouts, and headless disk output. |
@@ -158,6 +176,7 @@ This project originated as an open-source fork of [`cocos-mcp-server`](https://g
 
 ### K. Fast Headless Direct-to-Disk Editing (Bypass Editor Viewport)
 * Inspect scene without opening editor canvas: `scene_manage(action="inspect_headless", scenePath="db://assets/scenes/Game.scene")`.
+* Search nodes headlessly from disk AST: `node_manage(targetFile="db://assets/scenes/Game.scene", action="find_nodes_headless", pattern="Enemy", component="cc.Sprite")`.
 * Create node headlessly: `node_manage(targetFile="db://assets/scenes/Game.scene", action="create_headless", name="Enemy", parentPath="Canvas", position={x: 100, y: 50})`.
 * Add component headlessly: `component_manage(targetFile="db://assets/scenes/Game.scene", nodePath="Canvas/Enemy", action="add_headless", componentType="cc.RigidBody2D", properties={enabledContactListener: true})`.
 * Update component headlessly: `component_manage(targetFile="db://assets/prefabs/Hero.prefab", nodePath="Weapon", action="update_headless", componentType="WeaponController", properties={damage: 100})`.

@@ -10,9 +10,27 @@ Một plugin máy chủ Model Context Protocol (MCP) toàn diện, mã nguồn m
 
 ## 🙏 Lời cảm ơn & Ghi nhận đóng góp
 
-Dự án này bắt nguồn từ bản fork mã nguồn mở của [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) do tác giả **LiDaxian** sáng lập. Chúng tôi xin gửi lời cảm ơn và tri ân chân thành nhất tới **LiDaxian** cùng toàn thể cộng đồng đóng góp vì đã đặt nền móng kiến trúc và mở ra con đường phát triển Cocos Creator định hướng bởi AI.
+Được fork từ dự án mã nguồn mở [`cocos-mcp-server`](https://github.com/LiDaxian/cocos-mcp-server) của tác giả **LiDaxian**. Xin chân thành cảm ơn LiDaxian và cộng đồng đóng góp vì đã tiên phong mở đường tích hợp MCP cho Cocos Creator.
 
-`pts-cc-mcp` tiếp tục xây dựng và phát triển trên nền tảng này như một phần mở rộng hoàn toàn nguồn mở 100%, hướng đến cộng đồng, thay thế toàn bộ các tính năng nguồn đóng/thương mại bằng các giải pháp mã nguồn mở vượt trội.
+---
+
+## 🚀 Nhật ký Cập nhật Phiên bản 1.9.0: Engine AST Siêu tốc, Tinh gọn Công cụ & Tiếng Việt i18n
+
+### 1. Engine Thao tác AST Trực tiếp trên Ổ cứng Siêu tốc (< 15ms)
+- `PrefabAstParser` & `HeadlessEditTools`: Thực hiện các đột biến trực tiếp trên tệp JSON tuần tự hóa của `.scene` và `.prefab` mà không cần mở cảnh trong khung nhìn editor.
+- Loại bỏ hoàn toàn độ trễ IPC của editor, hiện tượng khóa hộp thoại modal và lỗi xung đột 409 Conflict.
+- Hỗ trợ chuỗi thao tác nguyên tử trong 1 lượt (`executeChain`) và chỉnh sửa hàng loạt nhiều tệp theo mẫu glob (`batch_edit_headless`).
+
+### 2. Tìm kiếm Nút Trực tiếp trên Ổ cứng (`find_nodes_headless`)
+- `node_manage(action="find_nodes_headless")`: Khám phá nút tốc độ cao từ cây AST trên ổ cứng theo mẫu chuỗi con, tên chính xác hoặc loại thành phần đính kèm (như `cc.BoxCollider2D`, `cc.Sprite`, `@ccclass` tùy chỉnh) chỉ trong < 15ms.
+
+### 3. Tinh gọn & Loại bỏ Công cụ Dư thừa
+- Loại bỏ hoàn toàn các công cụ cũ không còn hoạt động hoặc dư thừa (`game-tools.ts`, `server-tools.ts`).
+- Thay thế hoàn toàn stub mô phỏng thao tác game bằng trình điều khiển Playwright Chromium (`browser_manage`) và mô phỏng click trực tiếp (`component_manage(action="simulate_click")`).
+- Tự động dọn dẹp các mục cấu hình công cụ cũ khi khởi động.
+
+### 4. Hỗ trợ Ngôn ngữ Tiếng Việt Bản địa (i18n)
+- Bổ sung từ điển dịch thuật tiếng Việt toàn diện (`i18n/vi.js`) và tùy chọn chọn ngôn ngữ trên giao diện bảng điều khiển cùng công cụ thử nghiệm.
 
 ---
 
