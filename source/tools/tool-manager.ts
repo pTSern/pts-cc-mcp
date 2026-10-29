@@ -27,7 +27,17 @@ export class ToolManager {
         let changed = false;
         const nexusActive = isNexusAvailable();
         const chromiumActive = isChromiumAvailable();
+        const availableKeys = new Set(this.availableTools.map(t => `${t.category}_${t.name}`));
+
         for (const config of this.settings.configurations) {
+            // 1. Purge obsolete or pruned tools that no longer exist in availableTools
+            const prevCount = config.tools.length;
+            config.tools = config.tools.filter(t => availableKeys.has(`${t.category}_${t.name}`));
+            if (config.tools.length !== prevCount) {
+                changed = true;
+            }
+
+            // 2. Add newly introduced tools
             const existingKeys = new Set(config.tools.map(t => `${t.category}_${t.name}`));
             for (const tool of this.availableTools) {
                 const key = `${tool.category}_${tool.name}`;
