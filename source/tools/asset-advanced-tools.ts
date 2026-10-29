@@ -290,6 +290,24 @@ export class AssetAdvancedTools implements ToolExecutor {
                 return await this.handleAssetQuery(args);
             case 'asset_operations':
                 return await this.handleAssetOperations(args);
+            case 'assets-material-query-all-effects':
+            case 'material_query_all_effects':
+                return await this.queryAllEffects();
+            case 'assets-material-query-effect':
+            case 'material_query_effect':
+                return await this.queryEffect(args?.effectNameOrUuid || args?.name || args?.uuid);
+            case 'assets-material-query':
+            case 'material_query':
+                return await this.queryMaterial(args?.uuidOrUrlOrPath || args?.url || args?.uuid);
+            case 'assets-material-save':
+            case 'material_save':
+                return await this.saveMaterial(args?.uuidOrUrlOrPath || args?.url || args?.uuid, args?.patch);
+            case 'assets-query-serialized-data':
+            case 'query_serialized_data':
+                return await this.querySerializedData(args?.uuidOrUrlOrPath || args?.url || args?.uuid);
+            case 'assets-save-serialized-data':
+            case 'save_serialized_data':
+                return await this.saveSerializedData(args?.uuidOrUrlOrPath || args?.url || args?.uuid, args?.patch);
             default:
                 throw new Error(`Unknown tool: ${toolName}`);
         }
@@ -330,8 +348,115 @@ export class AssetAdvancedTools implements ToolExecutor {
                 return await this.traceReferences(args);
             case 'repair_broken_references':
                 return await this.repairBrokenReferences(args);
+            case 'query_effects':
+                return await this.queryAllEffects();
+            case 'query_effect':
+                return await this.queryEffect(args?.effectNameOrUuid || args?.name || args?.uuid);
+            case 'query_material':
+                return await this.queryMaterial(args?.target || args?.uuid || args?.url);
+            case 'save_material':
+                return await this.saveMaterial(args?.target || args?.uuid || args?.url, args?.patch);
+            case 'query_serialized_data':
+                return await this.querySerializedData(args?.target || args?.uuid || args?.url);
+            case 'save_serialized_data':
+                return await this.saveSerializedData(args?.target || args?.uuid || args?.url, args?.patch);
             default:
                 return { success: false, error: `Unknown asset manage action: ${action}` };
+        }
+    }
+
+    public async queryAllEffects(): Promise<ToolResponse> {
+        try {
+            const effects: any = await Editor.Message.request('scene', 'query-all-effects') || {};
+            const out: Record<string, any> = {};
+            for (const [uuid, e] of Object.entries(effects) as [string, any][]) {
+                const assetPath = e.assetPath && !/\.effect$/.test(e.assetPath) ? `${e.assetPath}.effect` : e.assetPath;
+                out[uuid] = { uuid: e.uuid || uuid, name: e.name, hideInEditor: Boolean(e.hideInEditor), assetPath };
+            }
+            return { success: true, data: out };
+        } catch (error: any) {
+            return { success: false, error: error.message || String(error) };
+        }
+    }
+
+    public async queryEffect(effectNameOrUuid: string): Promise<ToolResponse> {
+        try {
+            let key = effectNameOrUuid;
+            if (key.startsWith('db://') || /[\\/]/.test(key)) {
+                const info: any = await Editor.Message.request('asset-db', 'query-asset-info', key);
+                if (info && info.uuid) key = info.uuid;
+            }
+            const techniques: any = await Editor.Message.request('scene', 'query-effect', key);
+            if (!techniques || !techniques.length) {
+                return { success: false, error: `Effect asset not found: ${effectNameOrUuid}` };
+            }
+            return { success: true, data: techniques };
+        } catch (error: any) {
+            return { success: false, error: error.message || String(error) };
+        }
+    }
+
+    public async queryMaterial(target: string): Promise<ToolResponse> {
+        try {
+            let uuid = target;
+            if (target.startsWith('db://') || /[\\/]/.test(target)) {
+                const info: any = await Editor.Message.request('asset-db', 'query-asset-info', target);
+                if (!info || !info.uuid) return { success: false, error: `Material not found: ${target}` };
+                uuid = info.uuid;
+            }
+            const dump: any = await Editor.Message.request('scene', 'query-material', uuid);
+            return { success: true, data: dump };
+        } catch (error: any) {
+            return { success: false, error: error.message || String(error) };
+        }
+    }
+
+    public async saveMaterial(target: string, patch: any): Promise<ToolResponse> {
+        try {
+            let uuid = target;
+            if (target.startsWith('db://') || /[\\/]/.test(target)) {
+                const info: any = await Editor.Message.request('asset-db', 'query-asset-info', target);
+                if (!info || !info.uuid) return { success: false, error: `Material not found: ${target}` };
+                uuid = info.uuid;
+            }
+            const result: any = await Editor.Message.request('scene', 'apply-material', uuid, patch);
+            return { success: true, data: result, message: 'Material updated successfully' };
+        } catch (error: any) {
+            return { success: false, error: error.message || String(error) };
+        }
+    }
+
+    public async querySerializedData(target: string): Promise<ToolResponse> {
+        try {
+            let uuid = target;
+            let type = '';
+            const info: any = await Editor.Message.request('asset-db', 'query-asset-info', target);
+            if (info) {
+                uuid = info.uuid;
+                type = info.type;
+            }
+            const queryApi = type === 'cc.RenderPipeline' ? 'query-render-pipeline' : 'query-physics-material';
+            const dump: any = await Editor.Message.request('scene', queryApi, uuid);
+            return { success: true, data: { uuid, type, dump } };
+        } catch (error: any) {
+            return { success: false, error: error.message || String(error) };
+        }
+    }
+
+    public async saveSerializedData(target: string, patch: any): Promise<ToolResponse> {
+        try {
+            let uuid = target;
+            let type = '';
+            const info: any = await Editor.Message.request('asset-db', 'query-asset-info', target);
+            if (info) {
+                uuid = info.uuid;
+                type = info.type;
+            }
+            const applyApi = type === 'cc.RenderPipeline' ? 'apply-render-pipeline' : 'apply-physics-material';
+            const result: any = await Editor.Message.request('scene', applyApi, uuid, patch);
+            return { success: true, data: result, message: `Serialized data ${type} saved successfully` };
+        } catch (error: any) {
+            return { success: false, error: error.message || String(error) };
         }
     }
 

@@ -1,4 +1,6 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, ProjectInfo } from '../types';
+import { EditorUiManager } from '../utils/editor-ui-manager';
+import { checkTypeScript } from '../utils/ts-diagnostics';
 
 export class ProjectTools implements ToolExecutor {
     getTools(): ToolDefinition[] {
@@ -67,6 +69,25 @@ export class ProjectTools implements ToolExecutor {
                 return await this.handleProjectManage(args);
             case 'project_build_system':
                 return await this.handleBuildSystem(args);
+            case 'preview_query_state':
+            case 'preview-query-state':
+                return await this.handlePreviewCommand({ action: 'state' });
+            case 'preview_start':
+            case 'preview-start':
+                return await this.handlePreviewCommand({ action: 'start', mode: args?.mode || args?.options?.mode || 'gameView' });
+            case 'preview_stop':
+            case 'preview-stop':
+                return await this.handlePreviewCommand({ action: 'stop' });
+            case 'preview_pause':
+            case 'preview-pause':
+                return await this.handlePreviewCommand({ action: 'pause' });
+            case 'preview_resume':
+            case 'preview-resume':
+                return await this.handlePreviewCommand({ action: 'resume' });
+            case 'scripts_check_typescript':
+            case 'scripts-check-typescript':
+            case 'check_typescript':
+                return await this.handleCheckTypeScript(args);
             default:
                 throw new Error(`Unknown tool: ${toolName}`);
         }
@@ -85,8 +106,65 @@ export class ProjectTools implements ToolExecutor {
                 return await this.getProjectInfo();
             case 'get_settings':
                 return await this.getProjectSettings(args.category);
+            case 'preview_state':
+                return await this.handlePreviewCommand({ action: 'state' });
+            case 'preview_start':
+                return await this.handlePreviewCommand({ action: 'start', mode: args.mode || 'gameView' });
+            case 'preview_stop':
+                return await this.handlePreviewCommand({ action: 'stop' });
+            case 'preview_pause':
+                return await this.handlePreviewCommand({ action: 'pause' });
+            case 'preview_resume':
+                return await this.handlePreviewCommand({ action: 'resume' });
+            case 'check_typescript':
+                return await this.handleCheckTypeScript(args);
             default:
                 return { success: false, error: `Unknown project manage action: ${action}` };
+        }
+    }
+
+    public async handlePreviewCommand(command: { action: 'state' | 'start' | 'stop' | 'pause' | 'resume'; mode?: 'gameView' | 'browser' | 'simulator' }): Promise<ToolResponse> {
+        try {
+            if (command.action === 'start') {
+                const dirty = await Editor.Message.request('scene', 'query-dirty').catch(() => false);
+                if (dirty) {
+                    return {
+                        success: false,
+                        error: 'The open scene has unsaved changes. Save the scene first (scene_manage(action="save")) before starting preview.'
+                    };
+                }
+            }
+            const result = await EditorUiManager.executePreviewCommand(command);
+            return {
+                success: true,
+                message: `Preview command '${command.action}' executed successfully`,
+                data: result
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: error.message || String(error)
+            };
+        }
+    }
+
+    public async handleCheckTypeScript(args: any): Promise<ToolResponse> {
+        try {
+            const options = args?.options || args || {};
+            const result = await checkTypeScript({
+                maxErrors: options.maxErrors,
+                snippetLines: options.snippetLines
+            });
+            return {
+                success: true,
+                message: result.ok ? 'TypeScript type check passed without errors' : `TypeScript type check found ${result.errorCount} error(s)`,
+                data: result
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: error.message || String(error)
+            };
         }
     }
 

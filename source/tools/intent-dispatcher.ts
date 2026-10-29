@@ -77,13 +77,17 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['query', 'create', 'delete', 'duplicate', 'transform', 'reparent', 'set_active', 'clipboard', 'create_headless', 'delete_headless', 'duplicate_headless', 'transform_headless', 'reparent_headless', 'set_active_headless', 'query_headless', 'edit_headless'],
+                            enum: ['query', 'create', 'delete', 'duplicate', 'transform', 'reparent', 'set_active', 'clipboard', 'emit_event', 'simulate_click', 'find_nodes', 'node_tree', 'create_headless', 'delete_headless', 'duplicate_headless', 'transform_headless', 'reparent_headless', 'set_active_headless', 'query_headless', 'edit_headless'],
                             description: 'Node action opcode: standard editor actions or headless actions using targetFile'
                         },
                         targetFile: { type: 'string', description: 'Target .scene or .prefab file path for headless direct fs editing' },
                         nodeUuid: { type: 'string', description: 'Target node UUID (also accepts uuid)' },
                         uuid: { type: 'string', description: 'Target node UUID' },
                         nodePath: { type: 'string', description: 'Target node path in hierarchy (e.g. "Canvas/Player")' },
+                        eventName: { type: 'string', description: 'Event name for emit_event action' },
+                        payload: { description: 'Payload data for emit_event action' },
+                        nameContains: { type: 'string', description: 'Case-insensitive substring search for find_nodes action' },
+                        componentType: { type: 'string', description: 'Component type filter for find_nodes action' },
                         queryType: { type: 'string', enum: ['find_by_name', 'find_by_path', 'get_children', 'get_parent', 'dump_tree', 'list_all'], default: 'find_by_name' },
                         name: { type: 'string', description: 'Node name or search pattern' },
                         path: { type: 'string', description: 'Node path query (e.g. "Canvas/Panel/Button")' },
@@ -136,14 +140,19 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['add', 'remove', 'get', 'set_property', 'update', 'bind_event', 'list_types', 'query_class_info', 'add_headless', 'remove_headless', 'update_headless', 'get_headless', 'edit_headless'],
+                            enum: ['add', 'remove', 'get', 'set_property', 'update', 'bind_event', 'list_types', 'query_class_info', 'invoke_method', 'simulate_click', 'regenerate_polygon_2d', 'particle_control', 'add_headless', 'remove_headless', 'update_headless', 'get_headless', 'edit_headless'],
                             description: 'Component action opcode: standard editor actions or headless actions using targetFile'
                         },
                         targetFile: { type: 'string', description: 'Target .scene or .prefab file path for headless direct fs editing' },
                         nodeUuid: { type: 'string', description: 'Target node UUID' },
                         nodePath: { type: 'string', description: 'Target node path in hierarchy (e.g. "Canvas/Player")' },
+                        componentPath: { type: 'string', description: 'Full component path (e.g. "Canvas/Button/cc.Button") for invoke_method' },
                         componentType: { type: 'string', description: 'Component class name (e.g. "cc.Sprite", "cc.Label", "cc.Button", "cc.Widget", "cc.Layout", "cc.UITransform") or custom @ccclass name' },
                         componentIndex: { type: 'number', description: 'Index if multiple components of same type exist' },
+                        method: { type: 'string', description: 'Method name for invoke_method action' },
+                        args: { type: 'array', description: 'Method arguments for invoke_method action' },
+                        command: { type: 'string', enum: ['play', 'pause', 'stop', 'restart', 'query', 'set_speed'], description: 'Command for particle_control action' },
+                        speed: { type: 'number', description: 'Simulation speed for particle_control action' },
                         property: { type: 'string', description: 'Property path (supports dot-notation, e.g. "spriteFrame", "contentSize.width")' },
                         propertyType: { type: 'string', description: 'Property type: "string"|"number"|"boolean"|"color"|"vec2"|"vec3"|"size"|"spriteFrame"|"asset"' },
                         value: { description: 'Value to assign to property' },
@@ -301,10 +310,12 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['query', 'resolve', 'create', 'delete', 'import', 'dependencies', 'uuid_to_url', 'url_to_uuid', 'save_meta', 'trace_references', 'repair_broken_references', 'reimport', 'refresh'],
-                            description: 'Asset action opcode: "trace_references" = bidirectional reference graph | "repair_broken_references" = batch replace broken UUIDs/CIDs across assets | "reimport" = trigger AssetDB reimport | "refresh" = refresh folder'
+                            enum: ['query', 'resolve', 'create', 'delete', 'import', 'dependencies', 'uuid_to_url', 'url_to_uuid', 'save_meta', 'trace_references', 'repair_broken_references', 'reimport', 'refresh', 'query_effects', 'query_effect', 'query_material', 'save_material', 'query_serialized_data', 'save_serialized_data'],
+                            description: 'Asset action opcode: includes materials, effects, and serialized data'
                         },
-                        target: { type: 'string', description: 'Target UUID or asset path for trace_references' },
+                        target: { type: 'string', description: 'Target UUID or asset path for trace_references or material inspection' },
+                        effectNameOrUuid: { type: 'string', description: 'Effect asset name or UUID for query_effect action' },
+                        patch: { type: 'object', description: 'Patch payload for save_material or save_serialized_data' },
                         targetPath: { type: 'string', description: 'Folder or file path for repair_broken_references (default: "db://assets")' },
                         replacementMap: { type: 'object', description: 'Dictionary mapping broken UUID or CID to new replacement UUID or CID for repair_broken_references' },
                         dryRun: { type: 'boolean', default: false, description: 'Simulate replacements without writing to disk' },
@@ -403,15 +414,18 @@ export class IntentDispatcher {
             // 11. Project Control & Compiler
             {
                 name: 'project_manage',
-                description: 'PROJECT CONTROL & BUILD: Inspect project info, build settings, trigger preview or production builds, open build panel, and await TypeScript compilation.',
+                description: 'PROJECT CONTROL & BUILD: Inspect project info, build settings, in-editor preview toolbar (state, start, stop, pause, resume), TypeScript diagnostics checking, and build pipeline.',
                 inputSchema: {
                     type: 'object',
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['get_info', 'get_settings', 'update_settings', 'run', 'build', 'open_build_panel', 'compile_watch'],
-                            description: 'Project action opcode'
+                            enum: ['get_info', 'get_settings', 'update_settings', 'run', 'build', 'open_build_panel', 'compile_watch', 'preview_state', 'preview_start', 'preview_stop', 'preview_pause', 'preview_resume', 'check_typescript'],
+                            description: 'Project action opcode: includes in-editor preview toolbar controls and TypeScript compiler checks'
                         },
+                        mode: { type: 'string', enum: ['gameView', 'browser', 'simulator'], default: 'gameView', description: 'Preview mode for preview_start action' },
+                        maxErrors: { type: 'number', default: 50, description: 'Maximum TypeScript errors to report' },
+                        snippetLines: { type: 'number', default: 2, description: 'Source code context lines for TypeScript errors' },
                         category: { type: 'string', description: 'Settings category' },
                         platform: { type: 'string', description: 'Target platform (web-desktop, web-mobile, etc.)' },
                         debug: { type: 'boolean', default: true, description: 'Debug build flag' },
@@ -425,15 +439,26 @@ export class IntentDispatcher {
             // 12. Scene View & Viewport Control
             {
                 name: 'scene_view_control',
-                description: 'SCENE VIEWPORT CONTROL: Camera focus on node, 2D/3D view mode toggle, grid toggle, gizmo transform mode, and reference image overlays.',
+                description: 'SCENE VIEWPORT & EDITOR UI: Capture in-editor screenshots (scene, game, hierarchy, inspector, assets, console, editor), camera focus, 2D/3D view toggle, grid toggle, gizmo mode, editor selection, and reference image overlays.',
                 inputSchema: {
                     type: 'object',
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['camera_focus', 'camera_view', 'grid_toggle', 'gizmo_mode', 'reference_image'],
+                            enum: ['camera_focus', 'camera_view', 'grid_toggle', 'gizmo_mode', 'reference_image', 'screenshot', 'selection_query', 'selection_set'],
                             description: 'Viewport control action opcode'
                         },
+                        target: {
+                            type: 'string',
+                            enum: ['scene', 'game', 'editor', 'hierarchy', 'inspector', 'assets', 'console', 'preview', 'simulator'],
+                            default: 'scene',
+                            description: 'Target panel or window for screenshot action'
+                        },
+                        maxWidth: { type: 'number', default: 1280, description: 'Maximum width for screenshot action' },
+                        nodePaths: { type: 'array', items: { type: 'string' }, description: 'Node paths to select for selection_set action' },
+                        assetUrls: { type: 'array', items: { type: 'string' }, description: 'Asset db:// URLs or UUIDs to select for selection_set action' },
+                        focus: { type: 'boolean', default: true, description: 'Focus camera on selected nodes' },
+                        clear: { type: 'boolean', default: false, description: 'Clear current editor selection' },
                         nodeUuid: { type: 'string', description: 'Node UUID to focus camera on' },
                         viewMode: { type: 'string', enum: ['2D', '3D', 'top', 'front', 'left'] },
                         visible: { type: 'boolean', description: 'Grid visibility' },
@@ -839,6 +864,19 @@ export class IntentDispatcher {
                         nodeUuid: targetUuid
                     });
                 }
+                if (action === 'emit_event') {
+                    return await nodeTools.handleEmitNodeEvent(args);
+                }
+                if (action === 'simulate_click') {
+                    const compTools = this.tools['component'];
+                    if (compTools) return await compTools.handleSimulateButtonClick(args);
+                }
+                if (action === 'find_nodes') {
+                    return await nodeTools.handleFindNodes(args);
+                }
+                if (action === 'node_tree') {
+                    return await nodeTools.handleNodeTree(args);
+                }
                 return await nodeTools.handleNodeTransform({ uuid: targetUuid, ...args });
             }
 
@@ -878,6 +916,18 @@ export class IntentDispatcher {
                 }
                 if (action === 'query_class_info') {
                     return await compTools.queryClassInfo(args);
+                }
+                if (action === 'invoke_method') {
+                    return await compTools.handleInvokeMethod(args);
+                }
+                if (action === 'simulate_click') {
+                    return await compTools.handleSimulateButtonClick(args);
+                }
+                if (action === 'regenerate_polygon_2d') {
+                    return await compTools.handleRegeneratePolygon2D(args);
+                }
+                if (action === 'particle_control') {
+                    return await compTools.handleParticleControl(args);
                 }
                 return await compTools.updateComponent(args);
             }
@@ -952,6 +1002,9 @@ export class IntentDispatcher {
                 if (action === 'delete' || action === 'import' || action === 'save_meta' || action === 'trace_references' || action === 'repair_broken_references') {
                     return await assetTools.handleAssetManage(args);
                 }
+                if (action === 'query_effects' || action === 'query_effect' || action === 'query_material' || action === 'save_material' || action === 'query_serialized_data' || action === 'save_serialized_data') {
+                    return await assetTools.handleAssetManage(args);
+                }
                 if (action === 'dependencies' || action === 'uuid_to_url' || action === 'url_to_uuid') {
                     return await assetTools.handleAssetAnalyze(args);
                 }
@@ -998,6 +1051,15 @@ export class IntentDispatcher {
 
                 if (action === 'reference_image') {
                     if (refImg) return await refImg.handleReferenceImageControl(args);
+                }
+                if (action === 'screenshot' || action === 'capture_screenshot') {
+                    return await sceneView.handleScreenshot(args);
+                }
+                if (action === 'selection_query' || action === 'query_selection') {
+                    return await sceneView.handleSelectionQuery();
+                }
+                if (action === 'selection_set' || action === 'set_selection') {
+                    return await sceneView.handleSelectionSet(args);
                 }
                 if (action === 'grid_toggle') {
                     return await sceneView.handleGridControl(args);
@@ -1120,6 +1182,129 @@ export class IntentDispatcher {
     }
 
     private async dispatchLegacyTool(toolName: string, args: any): Promise<ToolResponse> {
+        const opts = args?.options || args || {};
+
+        // Cocos-CLI MCP and Editor UI Tool Aliases
+        if (toolName === 'editor-capture-screenshot' || toolName === 'editor_capture_screenshot') {
+            return await this.dispatchIntent('scene_view_control', { action: 'screenshot', target: opts.target || 'scene', maxWidth: opts.maxWidth });
+        }
+        if (toolName === 'editor-query-selection' || toolName === 'editor_query_selection') {
+            return await this.dispatchIntent('scene_view_control', { action: 'selection_query' });
+        }
+        if (toolName === 'editor-set-selection' || toolName === 'editor_set_selection') {
+            return await this.dispatchIntent('scene_view_control', { action: 'selection_set', ...opts });
+        }
+        if (toolName === 'scripts-check-typescript' || toolName === 'scripts_check_typescript') {
+            return await this.dispatchIntent('project_manage', { action: 'check_typescript', ...opts });
+        }
+        if (toolName === 'preview-query-state' || toolName === 'preview_query_state') {
+            return await this.dispatchIntent('project_manage', { action: 'preview_state' });
+        }
+        if (toolName === 'preview-start' || toolName === 'preview_start') {
+            return await this.dispatchIntent('project_manage', { action: 'preview_start', mode: opts.mode || 'gameView' });
+        }
+        if (toolName === 'preview-stop' || toolName === 'preview_stop') {
+            return await this.dispatchIntent('project_manage', { action: 'preview_stop' });
+        }
+        if (toolName === 'preview-pause' || toolName === 'preview_pause') {
+            return await this.dispatchIntent('project_manage', { action: 'preview_pause' });
+        }
+        if (toolName === 'preview-resume' || toolName === 'preview_resume') {
+            return await this.dispatchIntent('project_manage', { action: 'preview_resume' });
+        }
+        if (toolName === 'scene-invoke-component-method' || toolName === 'invoke_component_method') {
+            return await this.dispatchIntent('component_manage', {
+                action: 'invoke_method',
+                componentPath: opts.componentPath,
+                method: opts.method,
+                args: opts.args
+            });
+        }
+        if (toolName === 'scene-simulate-button-click' || toolName === 'simulate_button_click') {
+            return await this.dispatchIntent('component_manage', { action: 'simulate_click', nodePath: opts.nodePath || opts.nodeUuid });
+        }
+        if (toolName === 'scene-emit-node-event' || toolName === 'emit_node_event') {
+            return await this.dispatchIntent('node_manage', {
+                action: 'emit_event',
+                nodePath: opts.nodePath || opts.nodeUuid,
+                eventName: opts.eventName,
+                payload: opts.payload
+            });
+        }
+        if (toolName === 'scene-find-nodes' || toolName === 'find_nodes') {
+            return await this.dispatchIntent('node_manage', { action: 'find_nodes', options: opts });
+        }
+        if (toolName === 'scene-query-node-tree' || toolName === 'node_tree') {
+            return await this.dispatchIntent('node_manage', { action: 'node_tree', options: opts });
+        }
+        if (toolName === 'scene-regenerate-polygon-2d-points' || toolName === 'regenerate_polygon_2d') {
+            return await this.dispatchIntent('component_manage', { action: 'regenerate_polygon_2d', ref: opts.path || opts.nodePath || opts.nodeUuid, record: opts.record });
+        }
+        if (toolName.startsWith('particle-') || toolName.startsWith('particle_')) {
+            const cmd = toolName.replace(/^particle[-_]/, '');
+            if (cmd === 'query-play-info' || cmd === 'query_play_info') {
+                return await this.dispatchIntent('component_manage', { action: 'particle_control', command: 'query', ...opts });
+            }
+            if (cmd === 'set-play-speed' || cmd === 'set_play_speed') {
+                return await this.dispatchIntent('component_manage', { action: 'particle_control', command: 'set_speed', speed: opts.speed, ...opts });
+            }
+            return await this.dispatchIntent('component_manage', { action: 'particle_control', command: cmd, ...opts });
+        }
+        if (toolName === 'assets-material-query-all-effects') {
+            return await this.dispatchIntent('asset_manage', { action: 'query_effects' });
+        }
+        if (toolName === 'assets-material-query-effect') {
+            return await this.dispatchIntent('asset_manage', { action: 'query_effect', effectNameOrUuid: opts.effectNameOrUuid || opts.name || opts.uuid });
+        }
+        if (toolName === 'assets-material-query') {
+            return await this.dispatchIntent('asset_manage', { action: 'query_material', target: opts.uuidOrUrlOrPath || opts.url || opts.uuid });
+        }
+        if (toolName === 'assets-material-save') {
+            return await this.dispatchIntent('asset_manage', { action: 'save_material', target: opts.uuidOrUrlOrPath || opts.url || opts.uuid, patch: opts.patch });
+        }
+        if (toolName === 'assets-query-serialized-data') {
+            return await this.dispatchIntent('asset_manage', { action: 'query_serialized_data', target: opts.uuidOrUrlOrPath || opts.url || opts.uuid });
+        }
+        if (toolName === 'assets-save-serialized-data') {
+            return await this.dispatchIntent('asset_manage', { action: 'save_serialized_data', target: opts.uuidOrUrlOrPath || opts.url || opts.uuid, patch: opts.patch });
+        }
+        if (toolName === 'scene-query-current') {
+            return await this.dispatchIntent('scene_manage', { action: 'get_current' });
+        }
+        if (toolName === 'scene-open') {
+            return await this.dispatchIntent('scene_manage', { action: 'open', scenePath: opts.path || opts.scenePath });
+        }
+        if (toolName === 'scene-save') {
+            return await this.dispatchIntent('scene_manage', { action: 'save' });
+        }
+        if (toolName === 'scene-close') {
+            return await this.dispatchIntent('scene_manage', { action: 'close' });
+        }
+        if (toolName === 'scene-create') {
+            return await this.dispatchIntent('scene_manage', { action: 'create', sceneName: opts.name });
+        }
+        if (toolName === 'scene-query-node') {
+            return await this.dispatchIntent('node_manage', { action: 'query', nodeUuid: opts.nodeId || opts.uuid });
+        }
+        if (toolName === 'scene-create-node-by-type') {
+            return await this.dispatchIntent('node_manage', { action: 'create', name: opts.name, parentUuid: opts.parentNodeId });
+        }
+        if (toolName === 'scene-delete-node') {
+            return await this.dispatchIntent('node_manage', { action: 'delete', nodeUuid: opts.nodeId || opts.uuid });
+        }
+        if (toolName === 'scene-add-component') {
+            return await this.dispatchIntent('component_manage', { action: 'add', nodeUuid: opts.nodeId || opts.uuid, componentType: opts.componentType });
+        }
+        if (toolName === 'scene-delete-component') {
+            return await this.dispatchIntent('component_manage', { action: 'remove', nodeUuid: opts.nodeId || opts.uuid, componentType: opts.componentType });
+        }
+        if (toolName === 'assets-query-asset-info') {
+            return await this.dispatchIntent('asset_manage', { action: 'resolve', assetPath: opts.url || opts.uuid });
+        }
+        if (toolName === 'assets-refresh') {
+            return await this.dispatchIntent('asset_manage', { action: 'refresh' });
+        }
+
         // Direct tool aliases
         if (toolName === 'nexus_get_tree_graph' || toolName === 'get_tree_graph' || toolName === 'query_tree') {
             return await this.dispatchIntent('nexus_manage', { action: 'get_tree_graph', ...args });

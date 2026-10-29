@@ -281,6 +281,37 @@ export class ComponentTools implements ToolExecutor {
                 return await this.queryClassInfo(args);
             case 'spine_setup':
                 return await this.handleSpineSetup(args);
+            case 'invoke_method':
+            case 'scene-invoke-component-method':
+            case 'invoke_component_method':
+                return await this.handleInvokeMethod(args);
+            case 'simulate_click':
+            case 'scene-simulate-button-click':
+            case 'simulate_button_click':
+                return await this.handleSimulateButtonClick(args);
+            case 'particle_control':
+                return await this.handleParticleControl(args);
+            case 'scene-regenerate-polygon-2d-points':
+            case 'regenerate_polygon_2d':
+                return await this.handleRegeneratePolygon2D(args);
+            case 'particle-query-play-info':
+            case 'particle_query_play_info':
+                return await this.handleParticleControl({ ...args, command: 'query' });
+            case 'particle-set-play-speed':
+            case 'particle_set_play_speed':
+                return await this.handleParticleControl({ ...args, command: 'set_speed' });
+            case 'particle-play':
+            case 'particle_play':
+                return await this.handleParticleControl({ ...args, command: 'play' });
+            case 'particle-pause':
+            case 'particle_pause':
+                return await this.handleParticleControl({ ...args, command: 'pause' });
+            case 'particle-stop':
+            case 'particle_stop':
+                return await this.handleParticleControl({ ...args, command: 'stop' });
+            case 'particle-restart':
+            case 'particle_restart':
+                return await this.handleParticleControl({ ...args, command: 'restart' });
             // Backward compatibility support
             case 'add_component':
                 return await this.addComponents(args.nodeUuid, args.componentType);
@@ -371,6 +402,37 @@ export class ComponentTools implements ToolExecutor {
                 return await this.removeComponent(nodeUuid, componentType);
             case 'spine_setup':
                 return await this.handleSpineSetup(args);
+            case 'invoke_method':
+            case 'scene-invoke-component-method':
+            case 'invoke_component_method':
+                return await this.handleInvokeMethod(args);
+            case 'simulate_click':
+            case 'scene-simulate-button-click':
+            case 'simulate_button_click':
+                return await this.handleSimulateButtonClick(args);
+            case 'particle_control':
+                return await this.handleParticleControl(args);
+            case 'scene-regenerate-polygon-2d-points':
+            case 'regenerate_polygon_2d':
+                return await this.handleRegeneratePolygon2D(args);
+            case 'particle-query-play-info':
+            case 'particle_query_play_info':
+                return await this.handleParticleControl({ ...args, command: 'query' });
+            case 'particle-set-play-speed':
+            case 'particle_set_play_speed':
+                return await this.handleParticleControl({ ...args, command: 'set_speed' });
+            case 'particle-play':
+            case 'particle_play':
+                return await this.handleParticleControl({ ...args, command: 'play' });
+            case 'particle-pause':
+            case 'particle_pause':
+                return await this.handleParticleControl({ ...args, command: 'pause' });
+            case 'particle-stop':
+            case 'particle_stop':
+                return await this.handleParticleControl({ ...args, command: 'stop' });
+            case 'particle-restart':
+            case 'particle_restart':
+                return await this.handleParticleControl({ ...args, command: 'restart' });
             default:
                 return { success: false, error: `Unknown component manage action: ${action}` };
         }
@@ -389,6 +451,131 @@ export class ComponentTools implements ToolExecutor {
             default:
                 return { success: false, error: `Unknown query action: ${action}` };
         }
+    }
+
+    public async handleInvokeMethod(args: any): Promise<ToolResponse> {
+        try {
+            const options = args?.options || args || {};
+            let componentPath = options.componentPath;
+            if (!componentPath) {
+                const nodeRef = options.nodePath || options.nodeUuid || options.path;
+                const compRef = options.componentType || options.type;
+                if (nodeRef && compRef) {
+                    componentPath = `${nodeRef}/${compRef}`;
+                }
+            }
+            if (!componentPath) {
+                return { success: false, error: 'componentPath is required, e.g. "Canvas/Button/cc.Button"' };
+            }
+            const method = options.method || options.name;
+            if (!method) {
+                return { success: false, error: 'method name is required' };
+            }
+            const methodArgs = Array.isArray(options.args) ? options.args : [];
+
+            const result: any = await Editor.Message.request('scene', 'execute-scene-script', {
+                name: SCENE_SCRIPT_TARGET,
+                method: 'invokeComponentMethod',
+                args: [componentPath, method, methodArgs]
+            });
+            return result || { success: true, message: `Method ${method} executed` };
+        } catch (error: any) {
+            return { success: false, error: error.message || String(error) };
+        }
+    }
+
+    public async handleSimulateButtonClick(args: any): Promise<ToolResponse> {
+        try {
+            const options = args?.options || args || {};
+            const nodePath = options.nodePath || options.nodeUuid || options.path;
+            if (!nodePath) {
+                return { success: false, error: 'nodePath or nodeUuid is required' };
+            }
+            const result: any = await Editor.Message.request('scene', 'execute-scene-script', {
+                name: SCENE_SCRIPT_TARGET,
+                method: 'simulateButtonClick',
+                args: [nodePath]
+            });
+            return result || { success: true, message: 'Button clicked successfully' };
+        } catch (error: any) {
+            return { success: false, error: error.message || String(error) };
+        }
+    }
+
+    public async handleRegeneratePolygon2D(args: any): Promise<ToolResponse> {
+        try {
+            const options = args?.options || args || {};
+            const ref = options.ref || options.nodePath || options.nodeUuid || options.path;
+            if (!ref) {
+                return { success: false, error: 'nodePath or nodeUuid is required' };
+            }
+            const record = options.record !== false;
+            const result: any = await Editor.Message.request('scene', 'execute-scene-script', {
+                name: SCENE_SCRIPT_TARGET,
+                method: 'regeneratePolygon2DPoints',
+                args: [ref, record]
+            });
+            return result || { success: true, message: 'Polygon 2D points regenerated' };
+        } catch (error: any) {
+            return { success: false, error: error.message || String(error) };
+        }
+    }
+
+    public async handleParticleControl(args: any): Promise<ToolResponse> {
+        try {
+            const options = args?.options || args || {};
+            const command = options.command || options.action || 'query';
+            const nodeRef = options.nodePath || options.nodeUuid || options.path;
+            const compUuid = options.uuid || options.compUuid;
+
+            if (command === 'query') {
+                const targetComp = compUuid || (nodeRef ? await this.findParticleComponentUuid(nodeRef) : null);
+                if (!targetComp) {
+                    return { success: false, error: 'Particle component UUID or node reference required' };
+                }
+                const result: any = await Editor.Message.request('scene', 'execute-scene-script', {
+                    name: SCENE_SCRIPT_TARGET,
+                    method: 'particlePlayInfo',
+                    args: [targetComp]
+                });
+                return result || { success: true };
+            }
+
+            if (command === 'set_speed') {
+                const targetComp = compUuid || (nodeRef ? await this.findParticleComponentUuid(nodeRef) : null);
+                if (!targetComp) {
+                    return { success: false, error: 'Particle component UUID or node reference required' };
+                }
+                const speed = typeof options.speed === 'number' ? options.speed : 1;
+                const result: any = await Editor.Message.request('scene', 'execute-scene-script', {
+                    name: SCENE_SCRIPT_TARGET,
+                    method: 'setParticleSpeed',
+                    args: [targetComp, speed]
+                });
+                return result || { success: true, speed };
+            }
+
+            // play / pause / stop / restart
+            const result: any = await Editor.Message.request('scene', 'execute-scene-script', {
+                name: SCENE_SCRIPT_TARGET,
+                method: 'particleAction',
+                args: [command, nodeRef || '']
+            });
+            return result || { success: true, action: command };
+        } catch (error: any) {
+            return { success: false, error: error.message || String(error) };
+        }
+    }
+
+    private async findParticleComponentUuid(nodeRef: string): Promise<string | null> {
+        try {
+            const nodeInfo: any = await Editor.Message.request('scene', 'query-node', nodeRef);
+            if (nodeInfo && Array.isArray(nodeInfo.__comps__)) {
+                const comp = nodeInfo.__comps__.find((c: any) => c.type && c.type.includes('ParticleSystem'));
+                return comp ? comp.value : null;
+            }
+        } catch (e) {}
+        return null;
     }
 
     /**

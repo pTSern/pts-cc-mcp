@@ -19,4 +19,4 @@ function resolvePackageName(): string {
 }
 
 export const EXTENSION_NAME = resolvePackageName();
-export const SCENE_SCRIPT_TARGET = 'pts-core';
+export const SCENE_SCRIPT_TARGET = EXTENSION_NAME;

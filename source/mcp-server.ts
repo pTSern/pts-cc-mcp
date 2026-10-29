@@ -262,12 +262,20 @@ export class MCPServer {
             return await runWithMcpToolCallContext(headers, async () => {
                 try {
                     const toolResult = await this.executeToolCall(name, args);
-                    return {
-                        content: [{
-                            type: 'text' as const,
-                            text: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult, null, 2)
-                        }]
-                    };
+                    const content: any[] = [];
+                    const img = (toolResult && toolResult.__image) || (toolResult && toolResult.data && toolResult.data.__image);
+                    if (img && img.data) {
+                        content.push({
+                            type: 'image',
+                            data: img.data,
+                            mimeType: img.mimeType || 'image/png'
+                        });
+                    }
+                    content.push({
+                        type: 'text' as const,
+                        text: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult, null, 2)
+                    });
+                    return { content };
                 } finally {
                     try {
                         await completeMcpToolCallContext();
@@ -745,11 +753,21 @@ export class MCPServer {
                 case 'tools/call':
                     const { name, arguments: args } = params;
                     const toolResult = await this.executeToolCall(name, args);
+                    const callContent: any[] = [];
+                    const callImg = (toolResult && toolResult.__image) || (toolResult && toolResult.data && toolResult.data.__image);
+                    if (callImg && callImg.data) {
+                        callContent.push({
+                            type: 'image',
+                            data: callImg.data,
+                            mimeType: callImg.mimeType || 'image/png'
+                        });
+                    }
+                    callContent.push({
+                        type: 'text',
+                        text: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
+                    });
                     result = {
-                        content: [{
-                            type: 'text',
-                            text: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
-                        }]
+                        content: callContent
                     };
                     break;
                 case 'initialize':

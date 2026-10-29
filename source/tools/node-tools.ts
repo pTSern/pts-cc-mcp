@@ -396,6 +396,16 @@ export class NodeTools implements ToolExecutor {
                     return await this.handleNodeArrayManagement(args);
                 case 'node_script_management':
                     return await this.handleNodeScriptManagement(args);
+                case 'scene-emit-node-event':
+                case 'emit_node_event':
+                case 'emit_event':
+                    return await this.handleEmitNodeEvent(args);
+                case 'scene-find-nodes':
+                case 'find_nodes':
+                    return await this.handleFindNodes(args);
+                case 'scene-query-node-tree':
+                case 'node_tree':
+                    return await this.handleNodeTree(args);
                 default:
                     throw new Error(`Unknown tool: ${toolName}`);
             }
@@ -557,6 +567,57 @@ export class NodeTools implements ToolExecutor {
                 
             default:
                 return { success: false, error: `Unknown lifecycle action: ${action}` };
+        }
+    }
+
+    public async handleEmitNodeEvent(args: any): Promise<ToolResponse> {
+        try {
+            const options = args?.options || args || {};
+            const nodePath = options.nodePath || options.nodeUuid || options.path || options.uuid;
+            const eventName = options.eventName || options.event;
+            const payload = options.payload !== undefined ? options.payload : null;
+            if (!nodePath || !eventName) {
+                return { success: false, error: 'nodePath and eventName are required' };
+            }
+            const result: any = await Editor.Message.request('scene', 'execute-scene-script', {
+                name: SCENE_SCRIPT_TARGET,
+                method: 'emitNodeEvent',
+                args: [nodePath, eventName, payload]
+            });
+            return result || { success: true, message: `Event '${eventName}' emitted on '${nodePath}'` };
+        } catch (error: any) {
+            return { success: false, error: error.message || String(error) };
+        }
+    }
+
+    public async handleFindNodes(args: any): Promise<ToolResponse> {
+        try {
+            const options = args?.options || args || {};
+            const result: any = await Editor.Message.request('scene', 'execute-scene-script', {
+                name: SCENE_SCRIPT_TARGET,
+                method: 'findNodes',
+                args: [options]
+            });
+            return result || { success: true, data: [] };
+        } catch (error: any) {
+            return { success: false, error: error.message || String(error) };
+        }
+    }
+
+    public async handleNodeTree(args: any): Promise<ToolResponse> {
+        try {
+            const options = args?.options || args || {};
+            const rootPath = options.path || options.rootPath || '/';
+            const depth = typeof options.depth === 'number' ? options.depth : 32;
+            const includeComponents = options.includeComponents !== false;
+            const result: any = await Editor.Message.request('scene', 'execute-scene-script', {
+                name: SCENE_SCRIPT_TARGET,
+                method: 'nodeTree',
+                args: [rootPath, depth, includeComponents]
+            });
+            return result || { success: true, data: {} };
+        } catch (error: any) {
+            return { success: false, error: error.message || String(error) };
         }
     }
 

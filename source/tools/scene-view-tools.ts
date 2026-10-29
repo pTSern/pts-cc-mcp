@@ -1,4 +1,5 @@
 import { ToolDefinition, ToolResponse, ToolExecutor } from '../types';
+import { EditorUiManager } from '../utils/editor-ui-manager';
 
 export class SceneViewTools implements ToolExecutor {
     getTools(): ToolDefinition[] {
@@ -121,6 +122,8 @@ export class SceneViewTools implements ToolExecutor {
 
     async execute(toolName: string, args: any): Promise<ToolResponse> {
         switch (toolName) {
+            case 'scene_view_control':
+                return await this.handleSceneViewControl(args);
             case 'scene_view_gizmo_management':
                 return await this.handleGizmoManagement(args);
             case 'scene_view_mode_control':
@@ -131,8 +134,152 @@ export class SceneViewTools implements ToolExecutor {
                 return await this.handleCameraControl(args);
             case 'scene_view_status_management':
                 return await this.handleStatusManagement(args);
+            case 'editor_capture_screenshot':
+            case 'editor-capture-screenshot':
+            case 'screenshot':
+                return await this.handleScreenshot(args);
+            case 'editor_query_selection':
+            case 'editor-query-selection':
+                return await this.handleSelectionQuery();
+            case 'editor_set_selection':
+            case 'editor-set-selection':
+                return await this.handleSelectionSet(args);
             default:
                 throw new Error(`Unknown tool: ${toolName}`);
+        }
+    }
+
+    public async handleSceneViewControl(args: any): Promise<ToolResponse> {
+        const action = args?.action;
+        switch (action) {
+            case 'screenshot':
+            case 'capture_screenshot':
+                return await this.handleScreenshot(args);
+            case 'selection_query':
+            case 'query_selection':
+                return await this.handleSelectionQuery();
+            case 'selection_set':
+            case 'set_selection':
+                return await this.handleSelectionSet(args);
+            case 'grid_toggle':
+                return await this.handleViewModeControl({ action: 'set_grid', gridVisible: args?.visible ?? true });
+            case 'gizmo_mode':
+                return await this.handleGizmoManagement({ action: 'change_tool', toolName: args?.mode || 'position' });
+            case 'camera_focus':
+            case 'camera_view':
+            default:
+                return await this.handleCameraControl(args);
+        }
+    }
+
+    public async handleScreenshot(args: any): Promise<ToolResponse> {
+        try {
+            const options = args?.options || args || {};
+            const target = options.target || 'scene';
+            const maxWidth = options.maxWidth || 1280;
+            const result = await EditorUiManager.captureScreenshot(target, maxWidth);
+            return {
+                success: true,
+                message: `Screenshot captured for target '${target}'`,
+                data: result
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: error.message || String(error)
+            };
+        }
+    }
+
+    public async handleSelectionQuery(): Promise<ToolResponse> {
+        try {
+            const nodeUuids: string[] = Editor.Selection ? Editor.Selection.getSelected('node') || [] : [];
+            const assetUuids: string[] = Editor.Selection ? Editor.Selection.getSelected('asset') || [] : [];
+            const nodes: any[] = [];
+            for (const uuid of nodeUuids) {
+                try {
+                    const info: any = await Editor.Message.request('scene', 'query-node', uuid);
+                    nodes.push({ nodeId: uuid, path: info ? info.name : null, name: info ? info.name : null });
+                } catch (e) {
+                    nodes.push({ nodeId: uuid, path: null, name: null });
+                }
+            }
+            const assets: any[] = [];
+            for (const uuid of assetUuids) {
+                try {
+                    const info: any = await Editor.Message.request('asset-db', 'query-asset-info', uuid);
+                    assets.push({ uuid, url: info ? info.url : null, type: info ? info.type : null });
+                } catch (e) {
+                    assets.push({ uuid, url: null, type: null });
+                }
+            }
+            return {
+                success: true,
+                data: { nodes, assets }
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: error.message || String(error)
+            };
+        }
+    }
+
+    public async handleSelectionSet(args: any): Promise<ToolResponse> {
+        try {
+            const options = args?.options || args || {};
+            if (options.clear) {
+                if (Editor.Selection) {
+                    Editor.Selection.clear('node');
+                    Editor.Selection.clear('asset');
+                }
+                return await this.handleSelectionQuery();
+            }
+
+            const uuidsToSelect: string[] = [];
+            if (Array.isArray(options.nodeUuids)) {
+                uuidsToSelect.push(...options.nodeUuids);
+            }
+            if (Array.isArray(options.nodePaths)) {
+                for (const p of options.nodePaths) {
+                    try {
+                        const nodeInfo: any = await Editor.Message.request('scene', 'query-node-by-path', p);
+                        if (nodeInfo && nodeInfo.uuid) uuidsToSelect.push(nodeInfo.uuid);
+                    } catch (e) {
+                        // ignore path resolution failure
+                    }
+                }
+            }
+
+            if (Editor.Selection && uuidsToSelect.length > 0) {
+                Editor.Selection.select('node', uuidsToSelect);
+            }
+
+            if (Array.isArray(options.assetUrls) && Editor.Selection) {
+                const assetUuids: string[] = [];
+                for (const ref of options.assetUrls) {
+                    try {
+                        const info: any = await Editor.Message.request('asset-db', 'query-asset-info', ref);
+                        if (info && info.uuid) assetUuids.push(info.uuid);
+                    } catch (e) {
+                        // ignore asset resolution failure
+                    }
+                }
+                if (assetUuids.length > 0) {
+                    Editor.Selection.select('asset', assetUuids);
+                }
+            }
+
+            if (uuidsToSelect.length > 0 && options.focus !== false) {
+                await Editor.Message.request('scene', 'focus-camera', uuidsToSelect).catch(() => {});
+            }
+
+            return await this.handleSelectionQuery();
+        } catch (error: any) {
+            return {
+                success: false,
+                error: error.message || String(error)
+            };
         }
     }
 

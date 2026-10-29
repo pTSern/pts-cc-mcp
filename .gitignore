@@ -88,3 +88,4 @@ dist/examples/
 *.old
 
 dist
+.temps/
