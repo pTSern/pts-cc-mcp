@@ -31,6 +31,8 @@ export interface HeadlessChainOp {
     active?: boolean;
     is2D?: boolean;
     components?: Array<{ componentType: string; properties?: Record<string, any> }>;
+    fixtureTag?: string;
+    tag?: string;
 }
 
 export class HeadlessEditTools {
@@ -262,6 +264,57 @@ export class HeadlessEditTools {
                                 changes.push(addCompRes.message);
                             }
                         }
+                        break;
+                    }
+                    case 'spawn_fixture': {
+                        const fixtureName = op.name || `__fixture_${Date.now()}`;
+                        const tag = op.fixtureTag || op.tag || '__FIXTURE__';
+                        const created = parser.createNode(op.parentPath, {
+                            name: fixtureName,
+                            position: op.position,
+                            rotation: op.rotation,
+                            scale: op.scale,
+                            layer: op.layer,
+                            active: op.active !== false,
+                            is2D: op.is2D !== false,
+                            size: op.size,
+                            anchor: op.anchor
+                        });
+                        // Tag node in editor extras so clear_fixtures can identify it
+                        if (created && created.node) {
+                            created.node.__editorExtras__ = Object.assign(created.node.__editorExtras__ || {}, {
+                                fixtureTag: tag,
+                                isFixture: true
+                            });
+                        }
+                        if (Array.isArray(op.components) && op.components.length > 0) {
+                            for (const c of op.components) {
+                                const addCompRes = parser.addComponent(created.id, c.componentType, c.properties || {});
+                                changes.push(addCompRes.message);
+                            }
+                        }
+                        const changeMsg = `Spawned fixture "${created.name}" (id: ${created.id}, tag: ${tag}) under "${op.parentPath || 'root'}"`;
+                        changes.push(changeMsg);
+                        results.push({ opIndex: i, action, success: true, node: created, fixtureTag: tag });
+                        break;
+                    }
+
+                    case 'clear_fixtures': {
+                        const tag = op.fixtureTag || op.tag;
+                        const nodes = parser.getAllNodes();
+                        let clearedCount = 0;
+                        for (const n of nodes) {
+                            const isFixture = n.node.__editorExtras__?.isFixture === true || 
+                                              n.name.startsWith('__fixture_') ||
+                                              (tag && n.node.__editorExtras__?.fixtureTag === tag);
+                            if (isFixture) {
+                                const delRes = parser.deleteNode(n.id);
+                                if (delRes.success) clearedCount++;
+                            }
+                        }
+                        const changeMsg = `Cleared ${clearedCount} fixture node(s)${tag ? ` matching tag "${tag}"` : ''}`;
+                        changes.push(changeMsg);
+                        results.push({ opIndex: i, action, success: true, clearedCount });
                         break;
                     }
 

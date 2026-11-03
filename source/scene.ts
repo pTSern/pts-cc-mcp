@@ -709,6 +709,28 @@ export const methods: { [key: string]: (...any: any) => any } = {
         } catch (error: any) {
             return { success: false, error: error.message };
         }
+    },
+
+    async evalSceneScript(code: string) {
+        try {
+            const cc = require('cc');
+            const cce = (globalThis as any).cce;
+            const director = cc.director;
+            const scene = director?.getScene();
+            // Async function wrapper supporting top-level await
+            const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+            const fn = new AsyncFunction('cc', 'cce', 'director', 'scene', code);
+            const result = await fn(cc, cce, director, scene);
+            return {
+                success: true,
+                data: toSafePlain(result)
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: error.message || String(error)
+            };
+        }
     }
 };
 

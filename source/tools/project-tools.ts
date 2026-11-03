@@ -1,7 +1,8 @@
 import { ToolDefinition, ToolResponse, ToolExecutor, ProjectInfo } from '../types';
 import { EditorUiManager } from '../utils/editor-ui-manager';
 import { checkTypeScript } from '../utils/ts-diagnostics';
-
+import * as fs from 'fs';
+import * as path from 'path';
 export class ProjectTools implements ToolExecutor {
     getTools(): ToolDefinition[] {
         return [
@@ -118,6 +119,10 @@ export class ProjectTools implements ToolExecutor {
                 return await this.handlePreviewCommand({ action: 'resume' });
             case 'check_typescript':
                 return await this.handleCheckTypeScript(args);
+            case 'compile_extension':
+                return await this.compileExtension(args.extensionName || args.path || args.targetPath);
+            case 'reload_extension':
+                return await this.reloadExtension(args.extensionName || args.name || args.path);
             default:
                 return { success: false, error: `Unknown project manage action: ${action}` };
         }
@@ -333,4 +338,97 @@ export class ProjectTools implements ToolExecutor {
         }
     }
 
+
+    private async compileExtension(targetExtension?: string): Promise<ToolResponse> {
+        const projectRoot = (typeof Editor !== 'undefined' && Editor.Project && Editor.Project.path)
+            ? Editor.Project.path
+            : process.cwd();
+        
+        let extPath = projectRoot;
+        if (targetExtension) {
+            if (fs.existsSync(targetExtension)) {
+                extPath = targetExtension;
+            } else {
+                const candidate = path.join(projectRoot, 'extensions', targetExtension);
+                if (fs.existsSync(candidate)) extPath = candidate;
+            }
+        }
+
+        const tsconfig = path.join(extPath, 'tsconfig.json');
+        if (!fs.existsSync(tsconfig)) {
+            return { success: false, error: `tsconfig.json not found in "${extPath}"` };
+        }
+
+        const { findTscCompiler } = require('../utils/ts-diagnostics');
+        const tsc = findTscCompiler(projectRoot);
+        if (!tsc) {
+            return { success: false, error: 'TypeScript compiler (tsc) not found in project or editor installation' };
+        }
+
+        const { execFile } = require('child_process');
+        const startTime = Date.now();
+
+        return new Promise((resolve) => {
+            execFile(
+                process.execPath,
+                [tsc, '-p', tsconfig],
+                {
+                    cwd: extPath,
+                    env: Object.assign({}, process.env, { ELECTRON_RUN_AS_NODE: '1' }),
+                    timeout: 60000
+                },
+                (error: Error | null, stdout: string, stderr: string) => {
+                    const durationMs = Date.now() - startTime;
+                    const output = `${stdout || ''}\n${stderr || ''}`.trim();
+                    if (error) {
+                        resolve({
+                            success: false,
+                            error: `TypeScript compilation failed (${durationMs}ms): ${error.message}`,
+                            data: { output, durationMs }
+                        });
+                    } else {
+                        resolve({
+                            success: true,
+                            message: `Compiled extension at "${path.basename(extPath)}" in ${durationMs}ms`,
+                            data: { extension: path.basename(extPath), durationMs, output }
+                        });
+                    }
+                }
+            );
+        });
+    }
+
+    private async reloadExtension(extensionName?: string): Promise<ToolResponse> {
+        try {
+            if (!extensionName) {
+                return { success: false, error: 'extensionName is required to reload extension' };
+            }
+
+            if (typeof Editor !== 'undefined' && Editor.Message) {
+                let pkgPath = extensionName;
+                // If package name supplied, resolve its path
+                if (typeof Editor.Package !== 'undefined' && typeof Editor.Package.getPackages === 'function') {
+                    const pkgs = Editor.Package.getPackages();
+                    const found = pkgs.find((p: any) => p.name === extensionName || p.path === extensionName);
+                    if (found && found.path) pkgPath = found.path;
+                }
+
+                const res = await Editor.Message.request('extension', 'reload', pkgPath).catch((err: Error) => ({ error: err.message }));
+                if (res && res.error) {
+                    return { success: false, error: `Failed to reload extension "${extensionName}": ${res.error}` };
+                }
+
+                return {
+                    success: true,
+                    message: `Extension "${extensionName}" reloaded successfully`,
+                    data: { extension: extensionName, path: pkgPath }
+                };
+            }
+
+            return { success: false, error: 'Editor message bus not available' };
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { success: false, error: `Failed to reload extension: ${msg}` };
+        }
+    }
 }

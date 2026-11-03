@@ -614,6 +614,23 @@ export class SceneTools implements ToolExecutor {
         }
     }
 
+    public async evalSceneScript(code?: string): Promise<ToolResponse> {
+        try {
+            if (!code || typeof code !== 'string') {
+                return { success: false, error: 'code string is required for eval_script' };
+            }
+
+            const result: any = await Editor.Message.request('scene', 'execute-scene-script', {
+                name: SCENE_SCRIPT_TARGET,
+                method: 'evalSceneScript',
+                args: [code]
+            });
+            return result;
+        } catch (err: any) {
+            return { success: false, error: err.message };
+        }
+    }
+
     private async restorePrefab(nodeUuid: string, assetUuid: string): Promise<ToolResponse> {
         try {
             const result: any = await (Editor.Message.request as any)('scene', 'restore-prefab', nodeUuid, assetUuid);
@@ -806,6 +823,10 @@ export class SceneTools implements ToolExecutor {
             case 'execute_script':
             case 'execute_scene_script':
                 return await this.executeSceneScript(args.name, args.method, args.args);
+            case 'eval_script':
+            case 'eval':
+            case 'scene_script_run':
+                return await this.evalSceneScript(args.code || args.script);
             case 'restore_prefab':
                 return await this.restorePrefab(args.nodeUuid, args.assetUuid);
             default:

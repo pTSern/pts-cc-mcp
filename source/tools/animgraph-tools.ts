@@ -15,8 +15,8 @@ export class AnimgraphTools implements ToolExecutor {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['inspect', 'add_component', 'update_component', 'remove_component', 'batch_replace_types'],
-                            description: 'Action: "inspect" = examine states, transitions, variables, and attached components | "add_component" = attach StateMachineComponent to a state | "update_component" = modify component properties on a state | "remove_component" = detach component from a state | "batch_replace_types" = bulk replace component class names across the graph'
+                            enum: ['inspect', 'dump', 'list_instances', 'get_live_state', 'set_variable', 'set_layer_weight', 'add_component', 'update_component', 'remove_component', 'batch_replace_types'],
+                            description: 'Action: "dump" = full headless parse of state machines, layers, states & condition trees | "list_instances" = find runtime controllers playing graph | "get_live_state" = get active node, variables, layers telemetry | "set_variable" = mutate runtime variable | "set_layer_weight" = set runtime layer weight | "inspect" = examine states, transitions, variables | "add_component" = attach StateMachineComponent | "update_component" = modify component properties | "remove_component" = detach component | "batch_replace_types" = bulk replace component classes'
                         },
                         animgraphPath: {
                             type: 'string',
@@ -45,6 +45,25 @@ export class AnimgraphTools implements ToolExecutor {
                         toType: {
                             type: 'string',
                             description: 'New component type name for batch_replace_types (e.g. "Character_Graph_Transition").'
+                        },
+                        instanceId: {
+                            type: 'string',
+                            description: 'AnimationController component UUID for live targeting'
+                        },
+                        variableName: {
+                            type: 'string',
+                            description: 'Name of the variable to read or mutate'
+                        },
+                        value: {
+                            description: 'New value for set_variable (number, boolean)'
+                        },
+                        layerIndex: {
+                            type: 'number',
+                            description: 'Target animation layer index for set_layer_weight'
+                        },
+                        weight: {
+                            type: 'number',
+                            description: 'Layer weight value (0.0 to 1.0)'
                         }
                     },
                     required: ['action', 'animgraphPath']
@@ -56,6 +75,16 @@ export class AnimgraphTools implements ToolExecutor {
     async execute(toolName: string, args: any): Promise<ToolResponse> {
         const action = args?.action;
         switch (action) {
+            case 'dump':
+                return await this.dumpGraph(args.animgraphPath);
+            case 'list_instances':
+                return await this.listInstances(args.animgraphPath);
+            case 'get_live_state':
+                return await this.getLiveState(args.animgraphPath, args.instanceId);
+            case 'set_variable':
+                return await this.setVariable(args.animgraphPath, args.variableName, args.value, args.instanceId);
+            case 'set_layer_weight':
+                return await this.setLayerWeight(args.animgraphPath, args.layerIndex, args.weight, args.instanceId);
             case 'inspect':
                 return await this.inspectGraph(args.animgraphPath);
             case 'add_component':
@@ -443,5 +472,170 @@ export class AnimgraphTools implements ToolExecutor {
                 error: `Failed to batch replace types: ${err.message}`
             };
         }
+    }
+
+    private async dumpGraph(animgraphPath: string): Promise<ToolResponse> {
+        try {
+            const filePath = await this.resolveFsPath(animgraphPath);
+            if (!filePath) {
+                return { success: false, error: `Animation graph file not found: "${animgraphPath}"` };
+            }
+
+            // Try loading fast native dump from pts-animgraph parser if present
+            let parser: ((file: string) => unknown) | null = null;
+            try {
+                const projectRoot = (typeof Editor !== 'undefined' && Editor.Project && Editor.Project.path) 
+                    ? Editor.Project.path 
+                    : process.cwd();
+                const animGraphExtPath = path.join(projectRoot, 'extensions', 'pts-animgraph', 'dist', 'main.js');
+                if (fs.existsSync(animGraphExtPath)) {
+                    const mod = require(animGraphExtPath) as { pTS_parseAnimGraphFile?: (file: string) => unknown };
+                    parser = mod.pTS_parseAnimGraphFile || null;
+                }
+            } catch {}
+
+            if (typeof parser === 'function') {
+                const dump = parser(filePath);
+                if (dump) {
+                    return {
+                        success: true,
+                        message: `Headless dump generated for "${path.basename(filePath)}"`,
+                        data: dump
+                    };
+                }
+            }
+
+            // Fallback: use internal inspectGraph
+            return await this.inspectGraph(animgraphPath);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { success: false, error: `Failed to dump animgraph: ${msg}` };
+        }
+    }
+
+    private async listInstances(animgraphPath: string): Promise<ToolResponse> {
+        try {
+            const uuid = await this.resolveUuid(animgraphPath);
+            if (!uuid) return { success: false, error: `Could not resolve UUID for "${animgraphPath}"` };
+
+            if (typeof Editor !== 'undefined' && Editor.Message) {
+                const res = await Editor.Message.request('scene', 'execute-scene-script', {
+                    name: 'pts-core',
+                    method: 'pTS_get_animgraph_runtime_state',
+                    args: [{ uuid }]
+                }).catch(() => null) as { isPreview?: boolean; instances?: unknown[] } | null;
+
+                if (res && Array.isArray(res.instances)) {
+                    return {
+                        success: true,
+                        message: `Found ${res.instances.length} active instances for graph ${uuid}`,
+                        data: {
+                            uuid,
+                            isPreview: res.isPreview,
+                            instances: res.instances
+                        }
+                    };
+                }
+            }
+
+            return {
+                success: false,
+                error: 'Preview mode not running or no active instances found for this graph.'
+            };
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { success: false, error: `Failed to list instances: ${msg}` };
+        }
+    }
+
+    private async getLiveState(animgraphPath: string, instanceId?: string): Promise<ToolResponse> {
+        try {
+            const uuid = await this.resolveUuid(animgraphPath);
+            if (!uuid) return { success: false, error: `Could not resolve UUID for "${animgraphPath}"` };
+
+            if (typeof Editor !== 'undefined' && Editor.Message) {
+                const res = await Editor.Message.request('scene', 'execute-scene-script', {
+                    name: 'pts-core',
+                    method: 'pTS_get_animgraph_runtime_state',
+                    args: [{ uuid, instanceId }]
+                }).catch(() => null) as { instanceId?: string } | null;
+
+                if (res) {
+                    return {
+                        success: true,
+                        message: `Live telemetry retrieved for instance ${res.instanceId || instanceId || 'default'}`,
+                        data: res
+                    };
+                }
+            }
+
+            return { success: false, error: 'Preview mode not running or live state not available' };
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { success: false, error: `Failed to get live state: ${msg}` };
+        }
+    }
+
+    private async setVariable(animgraphPath: string, name: string, value: unknown, instanceId?: string): Promise<ToolResponse> {
+        try {
+            if (!name) return { success: false, error: 'variableName is required' };
+            const uuid = await this.resolveUuid(animgraphPath);
+            if (!uuid) return { success: false, error: `Could not resolve UUID for "${animgraphPath}"` };
+
+            if (typeof Editor !== 'undefined' && Editor.Message) {
+                const res = await Editor.Message.request('scene', 'execute-scene-script', {
+                    name: 'pts-core',
+                    method: 'pTS_set_animgraph_variable',
+                    args: [{ uuid, instanceId, name, value }]
+                }).catch((e: Error) => ({ success: false, error: e.message })) as { success?: boolean; error?: string };
+
+                return res?.success ? { success: true, message: `Variable "${name}" set to ${JSON.stringify(value)}` }
+                    : { success: false, error: res?.error || 'Failed to set variable' };
+            }
+
+            return { success: false, error: 'Editor message bus unavailable' };
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { success: false, error: `Failed to set variable: ${msg}` };
+        }
+    }
+
+    private async setLayerWeight(animgraphPath: string, layerIndex: number, weight: number, instanceId?: string): Promise<ToolResponse> {
+        try {
+            if (typeof layerIndex !== 'number') return { success: false, error: 'layerIndex is required' };
+            if (typeof weight !== 'number') return { success: false, error: 'weight is required' };
+            const uuid = await this.resolveUuid(animgraphPath);
+            if (!uuid) return { success: false, error: `Could not resolve UUID for "${animgraphPath}"` };
+
+            if (typeof Editor !== 'undefined' && Editor.Message) {
+                const res = await Editor.Message.request('scene', 'execute-scene-script', {
+                    name: 'pts-core',
+                    method: 'pTS_set_animgraph_layer_weight',
+                    args: [{ uuid, instanceId, layerIndex, weight }]
+                }).catch((e: Error) => ({ success: false, error: e.message })) as { success?: boolean; error?: string };
+
+                return res?.success ? { success: true, message: `Layer ${layerIndex} weight set to ${weight}` }
+                    : { success: false, error: res?.error || 'Failed to set layer weight' };
+            }
+
+            return { success: false, error: 'Editor message bus unavailable' };
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { success: false, error: `Failed to set layer weight: ${msg}` };
+        }
+    }
+
+    private async resolveUuid(assetPath: string): Promise<string | null> {
+        if (!assetPath) return null;
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(assetPath)) {
+            return assetPath;
+        }
+        if (typeof Editor !== 'undefined' && Editor.Message) {
+            try {
+                const info = await Editor.Message.request('asset-db', 'query-asset-info', assetPath) as { uuid?: string } | null;
+                if (info && info.uuid) return info.uuid;
+            } catch {}
+        }
+        return null;
     }
 }

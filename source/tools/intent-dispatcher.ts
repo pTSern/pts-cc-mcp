@@ -44,8 +44,8 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['get_current', 'get_list', 'open', 'save', 'save_as', 'create', 'close', 'hierarchy', 'inspect', 'stats', 'execute_script', 'execute_component_method', 'tree_graph', 'flow', 'inspect_headless', 'edit_headless', 'batch_edit_headless'],
-                            description: 'Scene action opcode: includes editor viewport actions and "inspect_headless" / "edit_headless" for direct fs AST modifications'
+                            enum: ['get_current', 'get_list', 'open', 'save', 'save_as', 'create', 'close', 'hierarchy', 'inspect', 'stats', 'execute_script', 'execute_component_method', 'eval_script', 'tree_graph', 'flow', 'inspect_headless', 'edit_headless', 'batch_edit_headless'],
+                            description: 'Scene action opcode: includes editor viewport actions, eval_script (arbitrary scene execution), and "inspect_headless" / "edit_headless" for direct fs AST modifications'
                         },
                         format: { type: 'string', enum: ['both', 'ascii', 'json'], default: 'both', description: 'Result format for tree_graph/hierarchy ("ascii", "json", "both")' },
                         scenePath: { type: 'string', description: 'Scene asset path (e.g. "db://assets/scenes/Game.scene")' },
@@ -60,6 +60,7 @@ export class IntentDispatcher {
                         method: { type: 'string', description: 'Script method name to execute' },
                         uuid: { type: 'string', description: 'Component or node UUID' },
                         args: { type: 'array', default: [], description: 'Arguments array for script or method' },
+                        code: { type: 'string', description: 'JavaScript code snippet to execute inside the active Scene Facade via eval_script' },
                         operations: { type: 'array', description: 'Chain operations for edit_headless action' },
                         chain: { type: 'array', description: 'Chain operations for edit_headless action' },
                         dryRun: { type: 'boolean', default: false, description: 'Simulate headless modifications without saving to disk' }
@@ -263,11 +264,12 @@ export class IntentDispatcher {
                         action: {
                             type: 'string',
                             enum: [
-                                'graph_inspect', 'graph_add_component', 'graph_update_component', 'graph_remove_component', 'graph_batch_replace',
+                                'graph_inspect', 'graph_dump', 'graph_list_instances', 'graph_get_live_state', 'graph_set_variable', 'graph_set_layer_weight',
+                                'graph_add_component', 'graph_update_component', 'graph_remove_component', 'graph_batch_replace',
                                 'clip_inspect', 'clip_create', 'clip_add_track', 'clip_remove_track', 'clip_add_keyframe', 'clip_remove_keyframe',
                                 'clip_add_event', 'clip_remove_event', 'clip_apply_preset', 'slice_fbx'
                             ],
-                            description: 'Animation action opcode'
+                            description: 'Animation action opcode: supports full headless animgraph graph_* actions as well as clip_* timelines'
                         },
                         // Animgraph properties
                         animgraphPath: { type: 'string', description: 'Path to .animgraph asset' },
@@ -277,6 +279,10 @@ export class IntentDispatcher {
                         componentIndex: { type: 'number', description: 'Index of component' },
                         fromType: { type: 'string', description: 'Source component class name for batch migration' },
                         toType: { type: 'string', description: 'Target component class name for batch migration' },
+                        instanceId: { type: 'string', description: 'AnimationController component UUID for live graph telemetry or mutations' },
+                        variableName: { type: 'string', description: 'Variable name to mutate or query' },
+                        layerIndex: { type: 'number', description: 'Target animation layer index for graph_set_layer_weight' },
+                        weight: { type: 'number', description: 'Weight value (0.0 - 1.0) for graph_set_layer_weight' },
                         // Clip & Timeline properties
                         animPath: { type: 'string', description: 'Path to .anim AnimationClip asset' },
                         name: { type: 'string', description: 'Animation clip or preset name' },
@@ -420,8 +426,8 @@ export class IntentDispatcher {
                     properties: {
                         action: {
                             type: 'string',
-                            enum: ['get_info', 'get_settings', 'update_settings', 'run', 'build', 'open_build_panel', 'compile_watch', 'preview_state', 'preview_start', 'preview_stop', 'preview_pause', 'preview_resume', 'check_typescript'],
-                            description: 'Project action opcode: includes in-editor preview toolbar controls and TypeScript compiler checks'
+                            enum: ['get_info', 'get_settings', 'update_settings', 'run', 'build', 'open_build_panel', 'compile_watch', 'preview_state', 'preview_start', 'preview_stop', 'preview_pause', 'preview_resume', 'check_typescript', 'compile_extension', 'reload_extension'],
+                            description: 'Project action opcode: includes in-editor preview toolbar controls, TypeScript checks, extension compiling & hot-reloading'
                         },
                         mode: { type: 'string', enum: ['gameView', 'browser', 'simulator'], default: 'gameView', description: 'Preview mode for preview_start action' },
                         maxErrors: { type: 'number', default: 50, description: 'Maximum TypeScript errors to report' },
@@ -430,7 +436,8 @@ export class IntentDispatcher {
                         platform: { type: 'string', description: 'Target platform (web-desktop, web-mobile, etc.)' },
                         debug: { type: 'boolean', default: true, description: 'Debug build flag' },
                         waitForCompile: { type: 'boolean', default: true, description: 'Await compilation completion' },
-                        timeoutMs: { type: 'number', default: 15000, description: 'Compilation wait timeout' }
+                        timeoutMs: { type: 'number', default: 15000, description: 'Compilation wait timeout' },
+                        extensionName: { type: 'string', description: 'Target extension folder name or path (e.g. "pts-animgraph")' }
                     },
                     required: ['action']
                 }
@@ -798,7 +805,7 @@ export class IntentDispatcher {
                 if (action === 'stats') {
                     return await sceneTools.handleQuerySystem({ action: 'get_stats' });
                 }
-                if (action === 'execute_script' || action === 'execute_scene_script' || action === 'execute_component_method') {
+                if (action === 'execute_script' || action === 'execute_scene_script' || action === 'execute_component_method' || action === 'eval_script' || action === 'eval' || action === 'scene_script_run') {
                     return await sceneTools.handleExecutionControl(args);
                 }
                 return await sceneTools.handleSceneManagement(args);
@@ -972,7 +979,7 @@ export class IntentDispatcher {
                     const animgraphTools = this.tools['animgraph'];
                     if (!animgraphTools) throw new Error('Animgraph tools not initialized');
                     const mappedAction = action.replace('graph_', '');
-                    return await animgraphTools.execute('manage', { ...args, action: mappedAction });
+                    return await animgraphTools.execute('manage', { ...args, action: mappedAction, value: args.value ?? args.variableValue });
                 }
 
                 // Clip timeline or FBX slicing operations
