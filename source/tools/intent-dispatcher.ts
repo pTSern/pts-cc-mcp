@@ -1,6 +1,7 @@
 import { ToolDefinition, ToolResponse } from '../types';
 import { isNexusAvailable } from '../utils/nexus-checker';
 import { isChromiumAvailable } from '../utils/chromium-checker';
+import { isEcsAvailable } from '../utils/ecs-checker';
 
 export class IntentDispatcher {
     private tools: Record<string, any>;
@@ -744,6 +745,62 @@ export class IntentDispatcher {
                     },
                     required: ['action']
                 }
+            },
+
+            // 19. Headless pTS-ECS Schema Manager (conditional on pts-ecs extension)
+            {
+                name: 'ecs_manage',
+                description: 'HEADLESS pTS-ECS MANAGER: Directly inspect, create, update, or remove ECS Components and Worlds, configure typed world events (primitive vs manual), list available engine Component/Asset subclasses, and regenerate _$secret/ecs.components.(js|d.ts) & ecs.worlds.(js|d.ts) without opening the UI panel.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: [
+                                'get_schema',
+                                'list_engine_types',
+                                'create_component',
+                                'update_component',
+                                'remove_component',
+                                'create_world',
+                                'update_world',
+                                'remove_world',
+                                'regenerate'
+                            ],
+                            description: 'ECS headless action opcode'
+                        },
+                        name: { type: 'string', description: 'Component or World name' },
+                        newName: { type: 'string', description: 'New name when renaming via update_component / update_world' },
+                        props: {
+                            type: 'array',
+                            description: 'Component properties array for create_component / update_component',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    name: { type: 'string', description: 'Property identifier' },
+                                    kind: { type: 'string', enum: ['primitive', 'cocos', 'component'], description: 'Optional; auto-inferred from type if omitted' },
+                                    type: { type: 'string', description: 'Primitive, Cocos Component/Asset class, or existing ECS Component name' },
+                                    complex: { type: 'string', enum: ['single', 'array', 'set', 'map'], default: 'single' },
+                                    defaultValue: { type: 'string', description: 'Optional default value or TypedArray length' },
+                                    tsType: { type: 'string', description: 'Optional explicit TS type for custom Cocos/Asset classes' }
+                                },
+                                required: ['name', 'type']
+                            }
+                        },
+                        components: {
+                            type: 'array',
+                            items: { type: 'string' },
+                            description: 'Registered component names for create_world / update_world'
+                        },
+                        max_entities: { description: 'Max entities: positive integer (e.g. 5000) or "Infinity"' },
+                        auto_boost: { type: 'boolean', default: true, description: 'Instantiate world immediately on boot (true) or lazily on ecs.get_world (false)' },
+                        event_mode: { type: 'string', enum: ['primitive', 'manual'], default: 'primitive', description: '"primitive" = string | symbol; "manual" = literal union from events[]' },
+                        events: { type: 'array', items: { type: 'string' }, description: 'Typed event channel names when event_mode is "manual"' },
+                        overwrite: { type: 'boolean', default: false, description: 'Overwrite existing component/world on create' },
+                        force: { type: 'boolean', default: false, description: 'Force remove component even if referenced (strips refs)' }
+                    },
+                    required: ['action']
+                }
             }
         ];
     }
@@ -754,7 +811,7 @@ export class IntentDispatcher {
             'ui_builder', 'anim_manage', 'asset_manage', 'knowledge_query',
             'validation_manage', 'batch_execute', 'project_manage', 'scene_view_control',
             'spine_manage', 'debug_manage', 'preferences_manage', 'broadcast_manage',
-            'nexus_manage', 'nexus_get_tree_graph', 'browser_manage'
+            'nexus_manage', 'nexus_get_tree_graph', 'browser_manage', 'ecs_manage'
         ]);
         return intentNames.has(toolName);
     }
@@ -1183,6 +1240,18 @@ export class IntentDispatcher {
                 return await browserTools.execute('browser_manage', args);
             }
 
+            case 'ecs_manage': {
+                if (!isEcsAvailable()) {
+                    return {
+                        success: false,
+                        error: 'pts-ecs extension is not installed or is disabled in the current project.'
+                    };
+                }
+                const ecsTools = this.tools['ecs'];
+                if (!ecsTools) throw new Error('ECS tools not initialized');
+                return await ecsTools.execute('ecs_manage', args);
+            }
+
             default:
                 throw new Error(`Unknown intent tool: ${toolName}`);
         }
@@ -1435,7 +1504,8 @@ export class IntentDispatcher {
             ui: 'uiBuilder',
             uiBuilder: 'uiBuilder',
             nexus: 'nexus',
-            browser: 'browser'
+            browser: 'browser',
+            ecs: 'ecs'
         };
 
         const targetCat = categoryMap[prefix] || prefix;

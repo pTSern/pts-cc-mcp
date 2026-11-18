@@ -19,6 +19,7 @@ import { EXTENSION_NAME } from './constants';
 import { IntentDispatcher } from './tools/intent-dispatcher';
 import { isNexusAvailable } from './utils/nexus-checker';
 import { isChromiumAvailable } from './utils/chromium-checker';
+import { isEcsAvailable } from './utils/ecs-checker';
 
 declare const Editor: any;
 
@@ -97,7 +98,8 @@ export class MCPServer {
                 batch: './tools/batch-tools',
                 knowledge: './tools/knowledge-tools',
                 uiBuilder: './tools/ui-builder-tools',
-                browser: './tools/browser-tools'
+                browser: './tools/browser-tools',
+                ecs: './tools/ecs-tools'
             };
 
             for (const [key, modPath] of Object.entries(toolModules)) {
@@ -200,13 +202,19 @@ export class MCPServer {
             if (!chromiumActive) {
                 this.toolsList = this.toolsList.filter(t => t.name !== 'browser_manage');
             }
+            const ecsActive = isEcsAvailable();
+            if (!ecsActive) {
+                this.toolsList = this.toolsList.filter(t => t.name !== 'ecs_manage');
+            }
         } else {
             // Fallback to legacy categories if dispatcher is not ready
             const nexusActive = isNexusAvailable();
             const chromiumActive = isChromiumAvailable();
+            const ecsActive = isEcsAvailable();
             for (const [category, toolSet] of Object.entries(this.tools)) {
                 if (category === 'nexus' && !nexusActive) continue;
                 if (category === 'browser' && !chromiumActive) continue;
+                if (category === 'ecs' && !ecsActive) continue;
                 const tools = toolSet.getTools();
                 for (const tool of tools) {
                     this.toolsList.push({
@@ -242,8 +250,13 @@ export class MCPServer {
         server.server.setRequestHandler(ListToolsRequestSchema, async () => {
             const nexusActive = isNexusAvailable();
             const chromiumActive = isChromiumAvailable();
+            const ecsActive = isEcsAvailable();
             const tools = this.toolsList
-                .filter(tool => (nexusActive || tool.name !== 'nexus_manage') && (chromiumActive || tool.name !== 'browser_manage'))
+                .filter(tool =>
+                    (nexusActive || tool.name !== 'nexus_manage') &&
+                    (chromiumActive || tool.name !== 'browser_manage') &&
+                    (ecsActive || tool.name !== 'ecs_manage')
+                )
                 .map(tool => ({
                     name: tool.name,
                     description: tool.description,

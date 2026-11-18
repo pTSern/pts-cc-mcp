@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { isNexusAvailable } from '../utils/nexus-checker';
 import { isChromiumAvailable } from '../utils/chromium-checker';
+import { isEcsAvailable } from '../utils/ecs-checker';
 import { t } from '../utils/i18n';
 
 export class ToolManager {
@@ -27,6 +28,7 @@ export class ToolManager {
         let changed = false;
         const nexusActive = isNexusAvailable();
         const chromiumActive = isChromiumAvailable();
+        const ecsActive = isEcsAvailable();
         const availableKeys = new Set(this.availableTools.map(t => `${t.category}_${t.name}`));
 
         for (const config of this.settings.configurations) {
@@ -47,7 +49,7 @@ export class ToolManager {
                 }
             }
 
-            // Automatically disable nexus tools if pts-nexus is absent or disabled
+            // Automatically disable conditional extension tools when their extension is absent/disabled
             for (const tool of config.tools) {
                 if (tool.category === 'nexus' || tool.name.startsWith('nexus_')) {
                     if (!nexusActive && tool.enabled) {
@@ -57,6 +59,12 @@ export class ToolManager {
                 }
                 if (tool.category === 'browser' || tool.name.startsWith('browser_')) {
                     if (!chromiumActive && tool.enabled) {
+                        tool.enabled = false;
+                        changed = true;
+                    }
+                }
+                if (tool.category === 'ecs' || tool.name.startsWith('ecs_')) {
+                    if (!ecsActive && tool.enabled) {
                         tool.enabled = false;
                         changed = true;
                     }
@@ -138,7 +146,7 @@ export class ToolManager {
                 './broadcast-tools', './scene-view-tools', './reference-image-tools',
                 './asset-advanced-tools', './validation-tools',
                 './animgraph-tools', './batch-tools', './knowledge-tools', './ui-builder-tools',
-                './nexus-tools', './browser-tools'
+                './nexus-tools', './browser-tools', './ecs-tools'
             ];
             for (const mod of toolModNames) {
                 try {
@@ -166,6 +174,7 @@ export class ToolManager {
             const { AnimationTools } = require('./animation-tools');
             const { NexusTools } = require('./nexus-tools');
             const { BrowserTools } = require('./browser-tools');
+            const { EcsTools } = require('./ecs-tools');
 
             // Initialize tool instances
             const tools = {
@@ -183,6 +192,7 @@ export class ToolManager {
                 validation: new ValidationTools(),
                 nexus: new NexusTools(),
                 browser: new BrowserTools(),
+                ecs: new EcsTools(),
                 animgraph: new AnimgraphTools(),
                 animation: new AnimationTools(),
                 batch: new BatchTools(),
@@ -193,15 +203,18 @@ export class ToolManager {
             // Get tool definitions from each tool class
             const nexusActive = isNexusAvailable();
             const chromiumActive = isChromiumAvailable();
+            const ecsActive = isEcsAvailable();
             this.availableTools = [];
             for (const [category, toolSet] of Object.entries(tools)) {
                 const toolDefinitions = toolSet.getTools();
                 toolDefinitions.forEach((tool: any) => {
                     const isNexusTool = category === 'nexus' || tool.name.startsWith('nexus_');
                     const isBrowserTool = category === 'browser' || tool.name.startsWith('browser_');
+                    const isEcsTool = category === 'ecs' || tool.name.startsWith('ecs_');
                     let isEnabled = true;
                     if (isNexusTool) isEnabled = nexusActive;
                     else if (isBrowserTool) isEnabled = chromiumActive;
+                    else if (isEcsTool) isEnabled = ecsActive;
 
                     this.availableTools.push({
                         category: category,
@@ -460,6 +473,7 @@ export class ToolManager {
     public getEnabledTools(): ToolConfig[] {
         const nexusActive = isNexusAvailable();
         const chromiumActive = isChromiumAvailable();
+        const ecsActive = isEcsAvailable();
         const currentConfig = this.getCurrentConfiguration();
         const tools = currentConfig ? currentConfig.tools : this.availableTools;
         return tools.filter(tool => {
@@ -471,6 +485,10 @@ export class ToolManager {
             if (isBrowserTool && !chromiumActive) {
                 return false;
             }
+            const isEcsTool = tool.category === 'ecs' || tool.name.startsWith('ecs_');
+            if (isEcsTool && !ecsActive) {
+                return false;
+            }
             return tool.enabled;
         });
     }
@@ -478,6 +496,7 @@ export class ToolManager {
     public getToolManagerState() {
         const nexusActive = isNexusAvailable();
         const chromiumActive = isChromiumAvailable();
+        const ecsActive = isEcsAvailable();
         const currentConfig = this.getCurrentConfiguration();
         const rawTools = currentConfig ? currentConfig.tools : this.getAvailableTools();
         const schemaMap = new Map(this.availableTools.map(t => [`${t.category}_${t.name}`, t.inputSchema]));
@@ -485,9 +504,11 @@ export class ToolManager {
         const enrichedTools = rawTools.map(tool => {
             const isNexusTool = tool.category === 'nexus' || tool.name.startsWith('nexus_');
             const isBrowserTool = tool.category === 'browser' || tool.name.startsWith('browser_');
+            const isEcsTool = tool.category === 'ecs' || tool.name.startsWith('ecs_');
             let isEnabled = tool.enabled;
             if (isNexusTool) isEnabled = nexusActive && tool.enabled;
             else if (isBrowserTool) isEnabled = chromiumActive && tool.enabled;
+            else if (isEcsTool) isEnabled = ecsActive && tool.enabled;
 
             return {
                 ...tool,
