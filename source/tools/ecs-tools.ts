@@ -20,6 +20,8 @@ interface EcsPropDef {
 
 interface EcsComponentDef {
     name: string;
+    is_component?: boolean;
+    extends?: string[];
     props: EcsPropDef[];
 }
 
@@ -68,6 +70,16 @@ export class EcsTools implements ToolExecutor {
                         newName: {
                             type: 'string',
                             description: 'New name when renaming a component or world via update_component / update_world'
+                        },
+                        extends: {
+                            type: 'array',
+                            items: { type: 'string' },
+                            description: 'Optional array of parent pTS-ECS component/struct names to extend (for create_component / update_component)'
+                        },
+                        is_component: {
+                            type: 'boolean',
+                            default: true,
+                            description: 'Whether this is an attachable ECS component (true) or a reusable base/struct type like Vec2 that cannot be registered on Worlds (false)'
                         },
                         props: {
                             type: 'array',
@@ -342,13 +354,29 @@ export class EcsTools implements ToolExecutor {
                         ? this.normalizeProps(args.props, compNames, engineLookup, enumLookup)
                         : (existingIdx >= 0 ? schema.components[existingIdx].props : []);
 
-                    const def: EcsComponentDef = { name: targetName, props };
+                    const rawExtends = args?.extends !== undefined
+                        ? (Array.isArray(args.extends) ? args.extends.map((e: any) => String(e ?? '').trim()).filter(Boolean) : [])
+                        : (existingIdx >= 0 && Array.isArray(schema.components[existingIdx].extends) ? schema.components[existingIdx].extends : []);
+
+                    const isComp = args?.is_component !== undefined
+                        ? Boolean(args.is_component)
+                        : (existingIdx >= 0 ? schema.components[existingIdx].is_component !== false : true);
+
+                    const def: EcsComponentDef = {
+                        name: targetName,
+                        ...(isComp === false ? { is_component: false } : {}),
+                        ...(rawExtends && rawExtends.length > 0 ? { extends: rawExtends } : {}),
+                        props
+                    };
                     if (existingIdx >= 0) {
                         schema.components[existingIdx] = def;
                         if (targetName !== name) {
                             for (const c of schema.components) {
                                 for (const p of c.props) {
                                     if (p.kind === 'component' && p.type === name) p.type = targetName;
+                                }
+                                if (Array.isArray(c.extends)) {
+                                    c.extends = c.extends.map(en => (en === name ? targetName : en));
                                 }
                             }
                             for (const w of schema.worlds) {
@@ -381,7 +409,10 @@ export class EcsTools implements ToolExecutor {
                     }
 
                     const refComps = schema.components
-                        .filter(c => c.name !== name && c.props.some(p => p.kind === 'component' && p.type === name))
+                        .filter(c => c.name !== name && (
+                            c.props.some(p => p.kind === 'component' && p.type === name) ||
+                            (Array.isArray(c.extends) && c.extends.includes(name))
+                        ))
                         .map(c => c.name);
                     const refWorlds = schema.worlds
                         .filter(w => w.components.includes(name))
@@ -401,6 +432,10 @@ export class EcsTools implements ToolExecutor {
                     if (args?.force) {
                         for (const c of schema.components) {
                             c.props = c.props.filter(p => !(p.kind === 'component' && p.type === name));
+                            if (Array.isArray(c.extends)) {
+                                c.extends = c.extends.filter(en => en !== name);
+                                if (c.extends.length === 0) delete c.extends;
+                            }
                         }
                         for (const w of schema.worlds) {
                             w.components = w.components.filter(cn => cn !== name);
