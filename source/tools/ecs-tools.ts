@@ -204,6 +204,12 @@ export class EcsTools implements ToolExecutor {
         if (typeof Editor !== 'undefined' && Editor?.Message?.request) {
             await Editor.Message.request('asset-db', 'refresh-asset', 'db://pts-ecs/_$secret').catch(() => {});
         }
+        if (typeof Editor !== 'undefined' && Editor?.Message?.send) {
+            try {
+                // Non-blocking fire-and-forget panel sync (never delays MCP response)
+                Editor.Message.send('pts-ecs', 'request_to_update_panel', schema);
+            } catch {}
+        }
         return { ok: true, mode: 'fs' };
     }
 
