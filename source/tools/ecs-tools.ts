@@ -11,7 +11,7 @@ const PRIMITIVE_TYPES = new Set([
 
 interface EcsPropDef {
     name: string;
-    kind: 'primitive' | 'cocos' | 'component';
+    kind: 'primitive' | 'cocos' | 'component' | 'enum';
     type: string;
     complex: 'single' | 'array' | 'set' | 'map';
     defaultValue?: string;
@@ -76,8 +76,8 @@ export class EcsTools implements ToolExecutor {
                                 type: 'object',
                                 properties: {
                                     name: { type: 'string', description: 'Property identifier (e.g. "x", "hp")' },
-                                    kind: { type: 'string', enum: ['primitive', 'cocos', 'component'], description: 'Optional; auto-inferred from type if omitted' },
-                                    type: { type: 'string', description: 'Type name: primitive (float|int|string|boolean|object|Int32Array|Uint32Array), Cocos class (e.g. "cc.Node", "cc.Sprite", "Config_Enemy"), or existing ECS Component name' },
+                                    kind: { type: 'string', enum: ['primitive', 'cocos', 'component', 'enum'], description: 'Optional; auto-inferred from type if omitted' },
+                                    type: { type: 'string', description: 'Type name: primitive (float|int|string|boolean|object|Int32Array|Uint32Array), Cocos class (e.g. "cc.Node", "cc.Sprite", "Config_Enemy"), registered Enum (e.g. "KeyCode", "EAnimState"), or existing ECS Component name' },
                                     complex: { type: 'string', enum: ['single', 'array', 'set', 'map'], default: 'single', description: 'Container wrapper mode' },
                                     defaultValue: { type: 'string', description: 'Optional default value (or TypedArray length for Int32Array/Uint32Array)' },
                                     tsType: { type: 'string', description: 'Optional explicit TS type for custom Cocos/Asset classes' }
@@ -205,16 +205,18 @@ export class EcsTools implements ToolExecutor {
         return { nodes: [{ name: 'cc.Node', tsType: 'import("cc").Node' }], components: [], assets: [] };
     }
 
-    private normalizeProps(rawProps: any[], existingCompNames: Set<string>, engineLookup: Map<string, string>): EcsPropDef[] {
+    private normalizeProps(rawProps: any[], existingCompNames: Set<string>, engineLookup: Map<string, string>, enumLookup: Map<string, string>): EcsPropDef[] {
         if (!Array.isArray(rawProps)) return [];
         return rawProps.map((p: any) => {
             const typeStr = String(p?.type ?? '').trim();
-            let kind: 'primitive' | 'cocos' | 'component' = p?.kind;
-            if (kind !== 'primitive' && kind !== 'cocos' && kind !== 'component') {
+            let kind: 'primitive' | 'cocos' | 'component' | 'enum' = p?.kind;
+            if (kind !== 'primitive' && kind !== 'cocos' && kind !== 'component' && kind !== 'enum') {
                 if (PRIMITIVE_TYPES.has(typeStr)) {
                     kind = 'primitive';
                 } else if (existingCompNames.has(typeStr)) {
                     kind = 'component';
+                } else if (enumLookup.has(typeStr)) {
+                    kind = 'enum';
                 } else {
                     kind = 'cocos';
                 }
@@ -230,6 +232,9 @@ export class EcsTools implements ToolExecutor {
             };
             if (kind === 'cocos') {
                 const resolvedTs = p?.tsType || engineLookup.get(typeStr) || engineLookup.get(`cc.${typeStr}`);
+                if (resolvedTs) out.tsType = resolvedTs;
+            } else if (kind === 'enum') {
+                const resolvedTs = p?.tsType || enumLookup.get(typeStr);
                 if (resolvedTs) out.tsType = resolvedTs;
             }
             return out;
@@ -321,16 +326,20 @@ export class EcsTools implements ToolExecutor {
                     compNames.add(targetName);
 
                     const engineLookup = new Map<string, string>();
+                    const enumLookup = new Map<string, string>();
                     const needsEngineLookup = Array.isArray(args?.props) && args.props.some((p: any) => !PRIMITIVE_TYPES.has(String(p?.type || '')) && !compNames.has(String(p?.type || '')));
                     if (needsEngineLookup) {
                         const eng = await this.listEngineTypes();
                         for (const item of [...(eng?.nodes || []), ...(eng?.components || []), ...(eng?.assets || [])]) {
                             if (item?.name && item?.tsType) engineLookup.set(item.name, item.tsType);
                         }
+                        for (const en of eng?.enums || []) {
+                            if (en?.name && en?.tsType) enumLookup.set(en.name, en.tsType);
+                        }
                     }
 
                     const props = args?.props !== undefined
-                        ? this.normalizeProps(args.props, compNames, engineLookup)
+                        ? this.normalizeProps(args.props, compNames, engineLookup, enumLookup)
                         : (existingIdx >= 0 ? schema.components[existingIdx].props : []);
 
                     const def: EcsComponentDef = { name: targetName, props };
