@@ -20,6 +20,7 @@ import { IntentDispatcher } from './tools/intent-dispatcher';
 import { isNexusAvailable } from './utils/nexus-checker';
 import { isChromiumAvailable } from './utils/chromium-checker';
 import { isEcsAvailable } from './utils/ecs-checker';
+import { isPtsAssetAvailable } from './utils/pts-asset-checker';
 
 declare const Editor: any;
 
@@ -99,7 +100,8 @@ export class MCPServer {
                 knowledge: './tools/knowledge-tools',
                 uiBuilder: './tools/ui-builder-tools',
                 browser: './tools/browser-tools',
-                ecs: './tools/ecs-tools'
+                ecs: './tools/ecs-tools',
+                ptsAsset: './tools/pts-asset-tools'
             };
 
             for (const [key, modPath] of Object.entries(toolModules)) {
@@ -206,15 +208,21 @@ export class MCPServer {
             if (!ecsActive) {
                 this.toolsList = this.toolsList.filter(t => t.name !== 'ecs_manage');
             }
+            const ptsAssetActive = isPtsAssetAvailable();
+            if (!ptsAssetActive) {
+                this.toolsList = this.toolsList.filter(t => t.name !== 'pts_asset_manage');
+            }
         } else {
             // Fallback to legacy categories if dispatcher is not ready
             const nexusActive = isNexusAvailable();
             const chromiumActive = isChromiumAvailable();
             const ecsActive = isEcsAvailable();
+            const ptsAssetActive = isPtsAssetAvailable();
             for (const [category, toolSet] of Object.entries(this.tools)) {
                 if (category === 'nexus' && !nexusActive) continue;
                 if (category === 'browser' && !chromiumActive) continue;
                 if (category === 'ecs' && !ecsActive) continue;
+                if (category === 'ptsAsset' && !ptsAssetActive) continue;
                 const tools = toolSet.getTools();
                 for (const tool of tools) {
                     this.toolsList.push({
@@ -251,11 +259,13 @@ export class MCPServer {
             const nexusActive = isNexusAvailable();
             const chromiumActive = isChromiumAvailable();
             const ecsActive = isEcsAvailable();
+            const ptsAssetActive = isPtsAssetAvailable();
             const tools = this.toolsList
                 .filter(tool =>
                     (nexusActive || tool.name !== 'nexus_manage') &&
                     (chromiumActive || tool.name !== 'browser_manage') &&
-                    (ecsActive || tool.name !== 'ecs_manage')
+                    (ecsActive || tool.name !== 'ecs_manage') &&
+                    (ptsAssetActive || tool.name !== 'pts_asset_manage')
                 )
                 .map(tool => ({
                     name: tool.name,

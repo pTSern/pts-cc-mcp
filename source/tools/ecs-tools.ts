@@ -34,9 +34,16 @@ interface EcsWorldDef {
     events?: string[];
 }
 
+interface EcsSettings {
+    auto_generate_dto: boolean;
+    ccclass_prefix: string;
+    ccclass_suffix: string;
+}
+
 interface EcsSchema {
     components: EcsComponentDef[];
     worlds: EcsWorldDef[];
+    settings?: EcsSettings;
 }
 
 export class EcsTools implements ToolExecutor {
@@ -59,6 +66,7 @@ export class EcsTools implements ToolExecutor {
                                 'create_world',
                                 'update_world',
                                 'remove_world',
+                                'update_settings',
                                 'regenerate'
                             ],
                             description: 'ECS headless action opcode'
@@ -130,6 +138,18 @@ export class EcsTools implements ToolExecutor {
                             type: 'boolean',
                             default: false,
                             description: 'For remove_component: force delete even if referenced by other components or worlds (strips references)'
+                        },
+                        auto_generate_dto: {
+                            type: 'boolean',
+                            description: 'For update_settings: enable/disable auto-generating Cocos @ccclass DTOs & ecs.get_ccclass_comp() types'
+                        },
+                        ccclass_prefix: {
+                            type: 'string',
+                            description: 'For update_settings: prefix for generated @ccclass DTO names (default "ECS_DTO")'
+                        },
+                        ccclass_suffix: {
+                            type: 'string',
+                            description: 'For update_settings: optional suffix for generated @ccclass DTO names (default "")'
                         }
                     },
                     required: ['action']
@@ -145,7 +165,8 @@ export class EcsTools implements ToolExecutor {
                 if (res && typeof res === 'object') {
                     return {
                         components: Array.isArray(res.components) ? res.components : [],
-                        worlds: Array.isArray(res.worlds) ? res.worlds : []
+                        worlds: Array.isArray(res.worlds) ? res.worlds : [],
+                        settings: res.settings
                     };
                 }
             } catch {}
@@ -157,7 +178,8 @@ export class EcsTools implements ToolExecutor {
             const parsed = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
             return {
                 components: Array.isArray(parsed?.components) ? parsed.components : [],
-                worlds: Array.isArray(parsed?.worlds) ? parsed.worlds : []
+                worlds: Array.isArray(parsed?.worlds) ? parsed.worlds : [],
+                settings: parsed?.settings
             };
         }
         return { components: [], worlds: [] };
@@ -192,17 +214,25 @@ export class EcsTools implements ToolExecutor {
         }
         existing.components = schema.components;
         existing.worlds = schema.worlds;
+        if (schema.settings) existing.settings = schema.settings;
         fs.writeFileSync(profilePath, JSON.stringify(existing, null, 2), 'utf8');
 
         const secretDir = path.join(root, 'extensions', 'pts-ecs', 'assets', '_$secret');
+        const scriptsDir = path.join(root, 'extensions', 'pts-ecs', 'assets', 'scripts');
         fs.mkdirSync(secretDir, { recursive: true });
+        fs.mkdirSync(scriptsDir, { recursive: true });
         fs.writeFileSync(path.join(secretDir, 'ecs.components.js'), codegenMod.generateComponentsJs(schema.components), 'utf8');
         fs.writeFileSync(path.join(secretDir, 'ecs.components.d.ts'), codegenMod.generateComponentsDts(schema.components), 'utf8');
         fs.writeFileSync(path.join(secretDir, 'ecs.worlds.js'), codegenMod.generateWorldsJs(schema.worlds), 'utf8');
         fs.writeFileSync(path.join(secretDir, 'ecs.worlds.d.ts'), codegenMod.generateWorldsDts(schema.worlds), 'utf8');
+        if (typeof codegenMod.generateDtoTs === 'function') {
+            fs.writeFileSync(path.join(scriptsDir, 'ecs.dto.ts'), codegenMod.generateDtoTs(schema.components, schema.settings), 'utf8');
+            fs.writeFileSync(path.join(secretDir, 'ecs.dto.d.ts'), codegenMod.generateDtoDts(schema.components, schema.settings), 'utf8');
+        }
 
         if (typeof Editor !== 'undefined' && Editor?.Message?.request) {
             await Editor.Message.request('asset-db', 'refresh-asset', 'db://pts-ecs/_$secret').catch(() => {});
+            await Editor.Message.request('asset-db', 'refresh-asset', 'db://pts-ecs/scripts/ecs.dto.ts').catch(() => {});
         }
         if (typeof Editor !== 'undefined' && Editor?.Message?.send) {
             try {
@@ -298,6 +328,25 @@ export class EcsTools implements ToolExecutor {
                         success: true,
                         data: types,
                         message: `Discovered ${types?.components?.length || 0} Component(s) & ${types?.assets?.length || 0} Asset(s)`
+                    };
+                }
+
+                case 'update_settings': {
+                    const schema = await this.loadSchema();
+                    const prev = schema.settings || { auto_generate_dto: false, ccclass_prefix: 'ECS_DTO', ccclass_suffix: '' };
+                    schema.settings = {
+                        auto_generate_dto: args?.auto_generate_dto !== undefined ? Boolean(args.auto_generate_dto) : Boolean(prev.auto_generate_dto),
+                        ccclass_prefix: args?.ccclass_prefix !== undefined ? String(args.ccclass_prefix).trim() : String(prev.ccclass_prefix ?? 'ECS_DTO'),
+                        ccclass_suffix: args?.ccclass_suffix !== undefined ? String(args.ccclass_suffix).trim() : String(prev.ccclass_suffix ?? '')
+                    };
+                    const saved = await this.saveSchema(schema);
+                    if (!saved.ok) {
+                        return { success: false, error: (saved.errors || ['Validation failed']).join('; ') };
+                    }
+                    return {
+                        success: true,
+                        data: { settings: schema.settings, mode: saved.mode },
+                        message: `Updated pTS-ECS settings (auto_generate_dto=${schema.settings.auto_generate_dto}, prefix="${schema.settings.ccclass_prefix}", suffix="${schema.settings.ccclass_suffix}") & regenerated files`
                     };
                 }
 

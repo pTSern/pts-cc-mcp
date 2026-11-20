@@ -2,6 +2,7 @@ import { ToolDefinition, ToolResponse } from '../types';
 import { isNexusAvailable } from '../utils/nexus-checker';
 import { isChromiumAvailable } from '../utils/chromium-checker';
 import { isEcsAvailable } from '../utils/ecs-checker';
+import { isPtsAssetAvailable } from '../utils/pts-asset-checker';
 
 export class IntentDispatcher {
     private tools: Record<string, any>;
@@ -801,8 +802,53 @@ export class IntentDispatcher {
                     },
                     required: ['action']
                 }
+            },
+
+            // 20. Headless pTS Asset Manager (conditional on pts-asset extension)
+            {
+                name: 'pts_asset_manage',
+                description: 'HEADLESS pTS ASSET MANAGER (requires pts-asset extension): List pTSAsset classes, list/inspect/create/register/update/verify/delete .pts assets directly on disk, sync .meta & _lazy.prefab, and trigger pts-asset extension API to refresh the pTS Inspector if currently watching.',
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        action: {
+                            type: 'string',
+                            enum: [
+                                'list_classes',
+                                'list',
+                                'inspect',
+                                'create',
+                                'register',
+                                'update',
+                                'verify',
+                                'delete',
+                                'refresh_inspector'
+                            ],
+                            description: 'pTS asset headless action opcode'
+                        },
+                        targetFile: { type: 'string', description: 'Target .pts file path ("db://assets/...", project-relative, absolute path, or UUID)' },
+                        url: { type: 'string', description: 'Alias for targetFile (e.g. "db://assets/configs/Test.pts")' },
+                        uuid: { type: 'string', description: 'Asset UUID of an existing .pts asset' },
+                        folder: { type: 'string', description: 'Folder path for list filter or create parent directory' },
+                        name: { type: 'string', description: 'File name for create when using folder (e.g. "EnemyConfig" or "EnemyConfig.pts")' },
+                        className: { type: 'string', description: 'Target pTSAsset @ccclass name (e.g. "Test_Config") for create/register/update/list filter' },
+                        type: { type: 'string', description: 'Alias for className' },
+                        values: { type: 'object', description: 'Property values map for __value__ (for create / update)' },
+                        set: { type: 'object', description: 'Dot-path property updates for update (e.g. { "hp": 100, "maps.0.selecter": "XVel" })' },
+                        remove: { type: 'array', items: { type: 'string' }, description: 'Dot-paths of properties to delete from __value__ (for update)' },
+                        merge: { type: 'boolean', default: true, description: 'For update: deep-merge values into existing __value__ (true) or replace completely (false)' },
+                        useClassDefaults: { type: 'boolean', default: true, description: 'For create: fetch live class defaults from pts-core:dump when available' },
+                        verify: { type: 'boolean', default: true, description: 'For create/update/register: run live schema verify to prune removed props & strip getters when scene dump is available' },
+                        includeSchema: { type: 'boolean', default: false, description: 'For inspect: include live class dump metadata from pts-core:dump if available' },
+                        isLazy: { type: 'boolean', description: 'Optional meta.userData.isLazy flag for create / register / update' },
+                        isForceLazy: { type: 'boolean', description: 'Optional meta.userData.isForceLazy flag for create / register / update' },
+                        overwrite: { type: 'boolean', default: false, description: 'For create: overwrite if target .pts file already exists' },
+                        dryRun: { type: 'boolean', default: false, description: 'Simulate create / update / verify without writing files to disk' }
+                    },
+                    required: ['action']
+                }
             }
-        ];
+        ].filter(t => isPtsAssetAvailable() || t.name !== 'pts_asset_manage');
     }
 
     public isIntentTool(toolName: string): boolean {
@@ -811,7 +857,8 @@ export class IntentDispatcher {
             'ui_builder', 'anim_manage', 'asset_manage', 'knowledge_query',
             'validation_manage', 'batch_execute', 'project_manage', 'scene_view_control',
             'spine_manage', 'debug_manage', 'preferences_manage', 'broadcast_manage',
-            'nexus_manage', 'nexus_get_tree_graph', 'browser_manage', 'ecs_manage'
+            'nexus_manage', 'nexus_get_tree_graph', 'browser_manage', 'ecs_manage',
+            'pts_asset_manage'
         ]);
         return intentNames.has(toolName);
     }
@@ -1250,6 +1297,18 @@ export class IntentDispatcher {
                 const ecsTools = this.tools['ecs'];
                 if (!ecsTools) throw new Error('ECS tools not initialized');
                 return await ecsTools.execute('ecs_manage', args);
+            }
+
+            case 'pts_asset_manage': {
+                if (!isPtsAssetAvailable()) {
+                    return {
+                        success: false,
+                        error: 'pts-asset extension is not installed or is disabled in the current project.'
+                    };
+                }
+                const ptsAssetTools = this.tools['ptsAsset'];
+                if (!ptsAssetTools) throw new Error('pTS Asset tools not initialized');
+                return await ptsAssetTools.execute('pts_asset_manage', args);
             }
 
             default:
