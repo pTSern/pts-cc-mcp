@@ -4,7 +4,7 @@ module.exports = {
     // Brand & General
     "extension_name": "pTS MCP Server",
     "description": "适用于 Cocos Creator 3.8 的 AI MCP 服务器",
-    "panel_title": "MCP 服务器",
+    "panel_title": "pTS MCP",
     "open_panel": "打开面板",
     "brand_name": "pTS MCP",
     "brand_tag": "STUDIO ENGINE BRIDGE",

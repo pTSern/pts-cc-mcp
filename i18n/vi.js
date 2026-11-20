@@ -4,7 +4,7 @@ module.exports = {
     // Brand & General
     "extension_name": "pTS MCP Server",
     "description": "Máy chủ MCP AI cho Cocos Creator 3.8",
-    "panel_title": "Máy chủ MCP",
+    "panel_title": "pTS MCP",
     "open_panel": "Mở Bảng điều khiển",
     "brand_name": "pTS MCP",
     "brand_tag": "STUDIO ENGINE BRIDGE",
